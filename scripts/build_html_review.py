@@ -266,9 +266,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     flex: 1;
     height: calc(100vh - 54px);
     overflow: hidden;
+    position: relative;
   }
   .pane {
-    flex: 1;
     height: 100%;
     overflow-y: auto;
     position: relative;
@@ -276,13 +276,51 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   /* Left Scan Image Pane + Floating Zoom Controls */
   .image-pane {
+    width: 48%;
+    min-width: 240px;
+    max-width: 82%;
+    flex: 0 0 auto;
     background: #1e293b;
     display: flex;
     flex-direction: column;
     align-items: center;
-    border-right: 2px solid #0f172a;
     padding: 16px;
     overflow: auto;
+  }
+
+  /* Movable Resizer Divider */
+  .pane-resizer {
+    width: 8px;
+    flex: 0 0 8px;
+    background: #0f172a;
+    border-left: 1px solid #334155;
+    border-right: 1px solid #cbd5e1;
+    cursor: col-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 15;
+    user-select: none;
+    transition: background 0.15s ease;
+  }
+  .pane-resizer:hover, .pane-resizer.dragging {
+    background: #0284c7;
+    border-color: #38bdf8;
+  }
+  .pane-resizer::after {
+    content: "⋮";
+    color: #94a3b8;
+    font-size: 15px;
+    font-weight: bold;
+    line-height: 1;
+    pointer-events: none;
+  }
+  .pane-resizer:hover::after, .pane-resizer.dragging::after {
+    color: #ffffff;
+  }
+  body.resizing-panes {
+    cursor: col-resize !important;
+    user-select: none !important;
   }
   .image-controls-bar {
     position: sticky;
@@ -329,6 +367,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   /* Right Scholarly Text Pane */
   .text-pane {
+    flex: 1 1 0%;
+    min-width: 300px;
     background: var(--paper-bg);
     color: #1c1917;
     display: flex;
@@ -649,7 +689,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       overflow-y: auto;
     }
     body { overflow: auto; height: auto; }
-    .pane { height: auto; max-height: 75vh; }
+    .pane { height: auto; max-height: 75vh; width: 100% !important; max-width: 100% !important; }
+    .pane-resizer { display: none; }
     .image-pane { border-right: none; border-bottom: 2px solid #0f172a; }
   }
 </style>
@@ -719,6 +760,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <img id="pageImg" src="" alt="Scan Image">
     </div>
   </div>
+
+  <!-- Movable Divider between Left and Right Panes -->
+  <div class="pane-resizer" id="paneResizer" title="कर्षतु — विभक्तं विस्तारं परिवर्तयतु (Drag to resize panes, double-click to reset)"></div>
 
   <!-- Right Editable Text Pane -->
   <div class="pane text-pane" id="textPane">
@@ -1202,6 +1246,50 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
     if (e.altKey && e.key === 'ArrowLeft') prevPage();
     if (e.altKey && e.key === 'ArrowRight') nextPage();
+  });
+
+  /* Movable Split Pane Resizer Logic */
+  const paneResizer = document.getElementById('paneResizer');
+  const imagePane = document.getElementById('imagePane');
+  const mainContainer = document.querySelector('.main-container');
+  let isResizingPanes = false;
+
+  paneResizer.addEventListener('pointerdown', (e) => {
+    isResizingPanes = true;
+    paneResizer.classList.add('dragging');
+    document.body.classList.add('resizing-panes');
+    paneResizer.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  paneResizer.addEventListener('pointermove', (e) => {
+    if (!isResizingPanes) return;
+    const rect = mainContainer.getBoundingClientRect();
+    let newLeftPct = ((e.clientX - rect.left) / rect.width) * 100;
+    newLeftPct = Math.max(20, Math.min(80, newLeftPct));
+    imagePane.style.width = newLeftPct.toFixed(2) + '%';
+    autoResize(sec1Editor);
+    autoResize(sec2Editor);
+  });
+
+  function stopPaneResize(e) {
+    if (!isResizingPanes) return;
+    isResizingPanes = false;
+    paneResizer.classList.remove('dragging');
+    document.body.classList.remove('resizing-panes');
+    try {
+      if (e && e.pointerId !== undefined) paneResizer.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+  }
+
+  paneResizer.addEventListener('pointerup', stopPaneResize);
+  paneResizer.addEventListener('pointercancel', stopPaneResize);
+
+  paneResizer.addEventListener('dblclick', () => {
+    imagePane.style.width = '48%';
+    autoResize(sec1Editor);
+    autoResize(sec2Editor);
+    showToast('समविभाजनम् स्थापितम् (Reset pane split)');
   });
 
   if (data.length > 0) switchPage(0);
