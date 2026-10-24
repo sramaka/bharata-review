@@ -3,3 +3,5 @@ venv/
 input_pdf/
 page_images/
 __pycache__/
+output/proofread_bundle.html
+*:Zone.Identifier
