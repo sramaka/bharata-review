@@ -1,0 +1,5 @@
+venv/
+.venv/
+input_pdf/
+page_images/
+__pycache__/
