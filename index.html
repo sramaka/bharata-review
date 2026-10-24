@@ -955,25 +955,16 @@
     const devNum = toDevanagariDigits(item.page);
     let parts = [`# पृष्ठम् ${devNum}`];
     if (opts.sec1) {
-      parts.push(`## १. मूलपाठः
-
-${(item.sec1 || '').trim()}`);
+      parts.push(`## १. मूलपाठः\n\n${(item.sec1 || '').trim()}`);
     }
     if (opts.sec2) {
-      parts.push(`## २. पदच्छेदसहितः पाठः
-
-${(item.sec2 || '').trim()}`);
+      parts.push(`## २. पदच्छेदसहितः पाठः\n\n${(item.sec2 || '').trim()}`);
     }
     if (opts.sec3) {
       const sec3Text = (item.sec3_md || '').trim() || '(टिप्पणी नास्ति)';
-      parts.push(`## ३. सम्पादनटिप्पण्यः
-
-${sec3Text}`);
+      parts.push(`## ३. सम्पादनटिप्पण्यः\n\n${sec3Text}`);
     }
-    return parts.join('
-
-') + '
-';
+    return parts.join('\n\n') + '\n';
   }
 
   async function copyToClipboard(text, successMessage) {
@@ -1059,12 +1050,7 @@ ${sec3Text}`);
       return '<!-- कृपया न्यूनातिन्यूनम् एकं विभागं चिनोतु (Please select at least one section above) -->';
     }
     const blocks = data.map(item => buildPageMarkdown(item, opts).trim());
-    return blocks.join('
-
----
-
-') + '
-';
+    return blocks.join('\n\n---\n\n') + '\n';
   }
 
   function refreshCompiledMarkdown() {

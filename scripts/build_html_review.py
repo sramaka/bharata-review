@@ -74,7 +74,7 @@ def parse_sections(raw_md):
 
     return sec1_text, sec2_text, sec3_md, sec3_html
 
-HTML_TEMPLATE = """<!DOCTYPE html>
+HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="sa">
 <head>
 <meta charset="UTF-8">
