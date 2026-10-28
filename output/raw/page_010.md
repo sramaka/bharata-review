@@ -2,8 +2,6 @@
 
 ## १. मूलपाठः
 
-vi
-
 in Samskrit. In 1909 this work was published and was dedicated by him to the Hon. Justice late V. Krishnaswami Iyer. It was prescribed as a Text book in the University for B. A. Degree examination for the year 1912.
 
 During the time of the Coronation of George V in 1911 the Govt. of Madras requested him to write an ode on the Coronation of King George V. It was called the George Deva Satakam. This poem was also translated into English and it was read on the occasion of the celebration of the Coronation at Delhi and in various centres at Madras. The Government of Madras was pleased to give him an honorarium and in recognition of the merit of his poem they awarded also a certificate of honour to him.
@@ -23,3 +21,4 @@ I had the good fortune of being a pupil of his and I hold him in veneration as m
 | ३ | पङ्क्तिः १८-१९ | Samskıit lite-rature | Samskrit literature | ❓ संदिग्धम् | "r" is damaged in the print; line-end hyphenation joined. |
 | ४ | पङ्क्तिः २२ | ger tle | gentle | ❓ संदिग्धम् | The n is broken in the print. |
 | ५ | पृष्ठान्तः | The late | — | ℹ️ पृष्ठसन्धिः | Sentence continues on page ०११ ("Sri V. Krishnaswami Iyer..."). |
+| ६ | शीर्षभागः | vi | — | ℹ️ पृष्ठसन्धिः | Printed page number vi at the top of the page omitted from the text, as on the Sanskrit pages. |

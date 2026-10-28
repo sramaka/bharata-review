@@ -2,8 +2,6 @@
 
 ## १. मूलपाठः
 
-v
-
 inscribed on granite slabs. He sought the assistance of Pandit Lakshmana Suri to reconstruct the text which was in part mutilated and also asked him to write a commentary on the work. Even after Dr. Hultzsch retired from his post and went to Germany, he was having correspondence with Pandit Lakshmana Suri in Samskrit. I have had the privilege of seeing many of the letters which Dr. Hultzsch wrote in genuine appreciation of the scholarship of Pandit Lakshmana Suri.
 
 Pandit Lakshmana Suri was also the author of many poems and dramas. The first of his poems was Viprasandesa based on the well-known story of the Bhagavatam, of Rukmini sending a message to Lord Sri Krishna. He wrote also the Mahakavya called Krishnalilamrita giving an account of the early life of Lord Sri Krishna. Parts of the work were read by the late Sri V. Krishnaswami Iyer, who very much admired the beauty of the poem.
@@ -23,3 +21,4 @@ Soon after the founding of the Ranade Library the late Mr. V. Krishnaswami Iyer 
 | ३ | पङ्क्तिः १४ | Sri ·Krishna | Sri Krishna | ⚠️ मुद्रणदोषः | Stray dot before "Krishna". |
 | ४ | पङ्क्तिः २५ | series\ | series | ⚠️ मुद्रणदोषः | Stray mark after "series". |
 | ५ | पृष्ठान्तः | life of Bhishma | — | ℹ️ पृष्ठसन्धिः | Sentence continues on page ०१० ("in Samskrit."). |
+| ६ | शीर्षभागः | v | — | ℹ️ पृष्ठसन्धिः | Printed page number v at the top of the page omitted from the text, as on the Sanskrit pages. |

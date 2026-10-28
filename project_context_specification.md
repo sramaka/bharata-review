@@ -9,7 +9,7 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 - **Primary OS / Host:** Ubuntu 24.04 LTS via WSL2 on Windows 11
 - **Working Directory:** `~/ocr_bharata_sangrahaha/`
 - **Python Environment:** Python 3.12+ virtual environment (`venv/`)
-- **Key Python Packages:** `pymupdf` (only for page extraction; the portal builder and local server use the standard library only)
+- **Key Python Packages:** `pymupdf` (page extraction, and web-image generation in the portal builder; the local server uses the standard library only)
 - **Deployment Platform:** GitHub Pages (`https://sramaka.github.io/bharata-review/`), served from the root `index.html` on `main`
 - **Backend Sync Webhook:** Google Apps Script Web App (URL set in `APPS_SCRIPT_URL` at the top of `scripts/build_html_review.py`). It receives zero-token POST payloads `{page, content}` and writes them directly to Google Drive (`bharata_verified_pages/`).
 
@@ -27,12 +27,13 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 ├── output/
 │   ├── raw/                                   # Agent-generated OCR markdown (page_015.md … page_032.md), committed
 │   ├── verified/                              # Scholar-verified final markdown files
-│   └── proofread_bundle.html                  # (git-ignored) Generated standalone reviewer portal
+│   └── proofread_bundle.html                  # (git-ignored) Optional offline portal with embedded scans (--standalone)
 ├── scripts/
 │   ├── extract_pages.py                       # PyMuPDF extractor: extract_pages.py START END [--dpi N]
-│   ├── build_html_review.py                   # Bundles images (base64) + parsed text into the web portal
+│   ├── build_html_review.py                   # Builds index.html + page_web/ from output/raw/ and page images
 │   └── local_review_and_direct_save_server.py # Local HTTP server (port 8000) with POST /save_verified → output/verified/
-├── index.html                                 # Root GitHub Pages deployment file (copy of proofread_bundle.html)
+├── index.html                                 # GitHub Pages portal, written by build_html_review.py (text only, ~0.4 MB)
+├── page_web/                                  # Committed 1600px grayscale JPEG scans (~250 KB each) loaded by index.html
 ├── project_context_specification.md           # Project architecture and instructions (this file)
 └── .gitignore                                 # Excludes venv/, .venv/, input_pdf/, page_images/, __pycache__/,
                                                #   output/proofread_bundle.html, *:Zone.Identifier
@@ -68,7 +69,7 @@ The builder (`parse_sections`) detects sections by the heading text `मूल�
 ---
 
 ## 5. Web Proofreading Portal Specifications (`scripts/build_html_review.py`)
-The builder pairs each `output/raw/page_XXX.md` with `page_images/page_XXX.png`, skipping pages without an image. It embeds everything (images as base64) into a single self-contained HTML file.
+The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that have none. It converts `page_images/page_XXX.png` to `page_web/page_XXX.jpg` (1600px wide, grayscale, JPEG quality 80), regenerating only when the PNG is newer, so a fresh clone without `page_images/` still builds from the committed JPEGs. It writes `index.html`, which holds the page text and loads each scan on demand (with a content-hash query string for cache-busting) and prefetches the next one. `--standalone` instead writes `output/proofread_bundle.html` with all scans embedded, for offline use.
 
 - **Scholar UX:** Tailored for a traditional Sanskrit scholar. Labels are in Sanskrit with English glosses, and no raw Markdown markup or technical prompts are shown.
 - **Single-Row Header:** Page navigation and section toggles on the left; **📖 सम्पूर्णः ग्रन्थः**, a **⚙** settings menu, and **💾 रक्षतु (Save)** on the right. The interface font is Noto Sans Devanagari (loaded from Google Fonts), with 14px+ text and 36px-tall buttons.
@@ -84,13 +85,14 @@ The builder pairs each `output/raw/page_XXX.md` with `page_images/page_XXX.png`,
 - **Copy Actions:** Per-section copy buttons; "Copy page text" and "Copy page with notes" are in the ⚙ menu. Where the browser supports it, the copied content is rich HTML that pastes cleanly into Word / Google Docs.
 - **Complete Text View (सम्पूर्णः ग्रन्थः):** A modal that compiles all pages into one reader-friendly text, using the current in-browser edits.
   - Options choose which sections to include (1/2/3), show page-number headers, and join words hyphenated across page breaks (पृष्ठसन्धि-संयोजनम्, on by default).
-  - With only Section 1 selected, joining on, and page numbers off, the text renders as one continuous flow.
-  - Exports: **Rich Copy**, **Word (.doc)**, **PDF / Print** (opens a print window, so pop-ups must be allowed), and **Markdown (.md)**. Exported files are named `bharata_sangraha_<first>_to_<last>`.
+  - Front matter (Foreword, Works, Contents) is left out unless **प्रस्तावनादि (Front Matter)** is ticked. When it is included, it comes first, English pages use a Latin font, and a rule separates it from the main text.
+  - Text is compiled per section (Foreword, each parva, …), so one section never runs on into the next. With only Section 1 selected, joining on, and page numbers off, each section renders as one continuous flow. Page headers use the section label (e.g. `आदिपर्व · पृ. ३ (PDF 017)`).
+  - Exports: **Rich Copy**, **Word (.doc)**, **PDF / Print** (opens a print window, so pop-ups must be allowed), and **Markdown (.md)**. Exported files are named `bharata_sangraha_<first>_to_<last>` after the PDF pages included.
   - `Esc` closes the modal.
 - **Zero-Prompt Persistence:** Clicking **💾 रक्षतु (Save)** POSTs `{page, content}` (the full 3-section Markdown) to the Google Apps Script Web App URL as `text/plain`, persisting `page_XXX.md` to `bharata_verified_pages/` in Google Drive. The button then shows `✔ रक्षितम्` along with a toast.
 
 ### Local Review Server (`scripts/local_review_and_direct_save_server.py`)
-Serves the repo root at `http://localhost:8000/output/proofread_bundle.html` with CORS enabled. It also exposes `POST /save_verified`, which takes a JSON body `{page, content}` and writes it to `output/verified/page_XXX.md`.
+Serves the repo root (the portal is at `http://localhost:8000/`) with CORS enabled. It also exposes `POST /save_verified`, which takes a JSON body `{page, content}` and writes it to `output/verified/page_XXX.md`.
 **Note:** the generated portal currently always saves to the Apps Script URL and does not call `/save_verified`. The endpoint is available for local testing or a future local-save mode.
 
 ---
@@ -112,16 +114,15 @@ When asked to transcribe `page_images/page_XXX.png`:
 
 ### C. Preview Locally
 ```bash
-python3 scripts/build_html_review.py
+venv/bin/python scripts/build_html_review.py
 python3 scripts/local_review_and_direct_save_server.py
-# open http://localhost:8000/output/proofread_bundle.html
+# open http://localhost:8000/
 ```
 
 ### D. Rebuild and Deploy Reviewer Portal
 ```bash
-python3 scripts/build_html_review.py
-cp output/proofread_bundle.html index.html
-git add index.html scripts/ output/raw/
+venv/bin/python scripts/build_html_review.py       # writes index.html and page_web/
+git add index.html page_web/ scripts/ output/raw/
 git commit -m "Update pages in review portal"
 git push origin main
 ```

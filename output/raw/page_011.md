@@ -2,8 +2,6 @@
 
 ## १. मूलपाठः
 
-vii
-
 Sri V. Krishnaswami Iyer gave unstinted support and encouragement to the Pandit's scholarly activities. So great was his affection for my father that on the occasion of his death his sorrow took the form of an elegy, Karunaka.
 
 The Bharata Samgraha is a valuable prose work of his and I am happy that his dutiful son, the Hon. Mr. Justice T. L. Venkatarama Iyer, has brought out this new edition of the work.
@@ -30,3 +28,4 @@ K. S. R. I.
 | ३ | हस्ताक्षरम् | Madras, 14-1-1956. } | — | ℹ️ व्याकरणम् / सन्धिः | Place and date are grouped by a brace beside the signature in the print; laid out as separate lines here. The last digit of the year is faint (read as 6). |
 | ४ | हस्ताक्षरम् | K. S. R. I. 23—7—1960. } | — | ℹ️ व्याकरणम् / सन्धिः | Brace omitted; dashes kept as printed. |
 | ५ | पङ्क्तिः १३ | Sarma | Sarma | ❓ संदिग्धम् | A faint mark over the first a may be a macron (Sārma). |
+| ६ | शीर्षभागः | vii | — | ℹ️ पृष्ठसन्धिः | Printed page number vii at the top of the page omitted from the text, as on the Sanskrit pages. |

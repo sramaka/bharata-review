@@ -3,10 +3,20 @@ import re
 import glob
 import json
 import base64
+import hashlib
+import argparse
 
 PAGE_IMAGES = "page_images"
 RAW_DIR = "output/raw"
-OUTPUT_HTML = "output/proofread_bundle.html"
+
+# Deployed site: index.html at the repo root loads page scans from WEB_IMAGE_DIR on demand
+SITE_HTML = "index.html"
+WEB_IMAGE_DIR = "page_web"
+WEB_IMAGE_WIDTH = 1600
+WEB_JPEG_QUALITY = 80
+
+# Optional single-file offline copy with all scans embedded (--standalone)
+STANDALONE_HTML = "output/proofread_bundle.html"
 
 # Paste your deployed Google Apps Script Web App URL here
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrgtnxcAj0Z7skBCbaAeAEwwEpKUBXN9bzMuUq7LbdZbVOQaeEf30jL9DVUV476Bg/exec"
@@ -40,10 +50,29 @@ def page_metadata(pdf_page):
     """Return section label, printed page number and language for a PDF page."""
     if pdf_page in FRONT_MATTER:
         section, printed, lang = FRONT_MATTER[pdf_page]
-        return {"section": section, "book_page": printed, "lang": lang}
+        return {"section": section, "book_page": printed, "lang": lang, "front": True}
     book_page = pdf_page - BOOK_PAGE_OFFSET
     section = next((name for lo, hi, name in PARVAS if lo <= book_page <= hi), "")
-    return {"section": section, "book_page": to_devanagari_num(book_page) if book_page > 0 else "", "lang": "sa"}
+    return {"section": section, "book_page": to_devanagari_num(book_page) if book_page > 0 else "", "lang": "sa", "front": False}
+
+def ensure_web_image(p_num):
+    """Return the web JPEG path for a page, regenerating it from the 300 DPI PNG when that is newer."""
+    png_path = os.path.join(PAGE_IMAGES, f"page_{p_num}.png")
+    jpg_path = os.path.join(WEB_IMAGE_DIR, f"page_{p_num}.jpg")
+    if os.path.exists(png_path) and (not os.path.exists(jpg_path) or os.path.getmtime(jpg_path) < os.path.getmtime(png_path)):
+        import pymupdf  # only needed when (re)generating images
+        pix = pymupdf.Pixmap(png_path)
+        if pix.alpha:
+            pix = pymupdf.Pixmap(pix, 0)
+        if pix.colorspace and pix.colorspace.n > 1:
+            pix = pymupdf.Pixmap(pymupdf.csGRAY, pix)
+        if pix.width > WEB_IMAGE_WIDTH:
+            pix = pymupdf.Pixmap(pix, WEB_IMAGE_WIDTH, round(pix.height * WEB_IMAGE_WIDTH / pix.width), None)
+        os.makedirs(WEB_IMAGE_DIR, exist_ok=True)
+        with open(jpg_path, "wb") as f:
+            f.write(pix.tobytes("jpg", jpg_quality=WEB_JPEG_QUALITY))
+        print(f"  └─ Web image: {jpg_path}")
+    return jpg_path if os.path.exists(jpg_path) else None
 
 def to_devanagari_num(num_str):
     return str(num_str).translate(DEVANAGARI_DIGITS)
@@ -793,6 +822,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     border-radius: 999px;
     margin: 14px 0 8px 0;
   }
+  .book-en { font-family: 'Noto Serif', Georgia, serif; line-height: 1.6; }
+  .book-en p { text-align: left; }
+  .book-part-break {
+    border: none;
+    border-top: 1px solid #d6d3d1;
+    margin: 28px 25%;
+  }
   .book-sec-heading {
     font-family: 'Noto Serif Devanagari', system-ui, sans-serif;
     font-size: 0.85em;
@@ -990,6 +1026,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <input type="checkbox" id="optMergeHyphens" checked onchange="refreshCompiledView()">
           <strong>पृष्ठसन्धि-संयोजनम् (Join Split Words)</strong>
         </label>
+        <label title="प्रस्तावना, कृतयः, विषयसूची च (Include the Foreword, Works and Contents before the main text)">
+          <input type="checkbox" id="optFrontMatter" onchange="refreshCompiledView()">
+          प्रस्तावनादि (Front Matter)
+        </label>
         <label title="पृष्ठसङ्ख्याः दर्शयतु (Show page number headers)">
           <input type="checkbox" id="optShowPageNums" onchange="refreshCompiledView()">
           पृष्ठसङ्ख्याः (Page Numbers)
@@ -1151,7 +1191,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       item.sec2Baseline = item.sec2;
     }
 
-    pageImg.src = 'data:image/png;base64,' + item.img;
+    pageImg.src = item.img;
+    // Warm the cache for the next scan so page turns feel instant
+    if (data[currentIndex + 1]) new Image().src = data[currentIndex + 1].img;
     sec1Editor.value = item.sec1;
     sec2Editor.value = item.sec2;
     sec3Content.innerHTML = item.sec3_html;
@@ -1520,6 +1562,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     return {
       mergeHyphens: document.getElementById('optMergeHyphens').checked,
       showPageNums: document.getElementById('optShowPageNums').checked,
+      frontMatter: document.getElementById('optFrontMatter').checked,
       sec1: document.getElementById('incSec1').checked,
       sec2: document.getElementById('incSec2').checked,
       sec3: document.getElementById('incSec3').checked
@@ -1542,6 +1585,23 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     return result;
   }
 
+  // Pages included in the compiled book: front matter only when asked for
+  function compiledPages(opts) {
+    return data.filter(d => opts.frontMatter || !d.front);
+  }
+
+  // Consecutive pages sharing a section (Foreword, a parva, ...) are compiled together,
+  // so text never runs on from one section into the next
+  function groupBySection(pages) {
+    const groups = [];
+    pages.forEach(p => {
+      const last = groups[groups.length - 1];
+      if (last && last[0].section === p.section && last[0].front === p.front) last.push(p);
+      else groups.push([p]);
+    });
+    return groups;
+  }
+
   function buildCompiledBookData() {
     if (data[currentIndex]) {
       data[currentIndex].sec1 = sec1Editor.value;
@@ -1555,9 +1615,30 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       };
     }
 
+    const pages = compiledPages(opts);
+    const parts = { front: [], main: [] };
+    groupBySection(pages).forEach(group => {
+      const part = compileSectionGroup(group, opts);
+      if (group[0].lang === 'en') part.html = `<div class="book-en" lang="en">${part.html}</div>`;
+      parts[group[0].front ? 'front' : 'main'].push(part);
+    });
+
+    const joinParts = list => ({
+      plain: list.map(p => p.plain.trim()).join('\n\n'),
+      html: list.map(p => p.html).join('\n')
+    });
+    const front = joinParts(parts.front), main = joinParts(parts.main);
+    if (!parts.front.length) return { plain: main.plain + '\n', html: main.html };
+    return {
+      plain: front.plain + '\n\n* * *\n\n' + main.plain + '\n',
+      html: front.html + '\n<hr class="book-part-break">\n' + main.html
+    };
+  }
+
+  function compileSectionGroup(pages, opts) {
     // Continuous seamless mode when only Mulapatha (or Mulapatha without page headers) is selected with Join Split Words
     if (opts.mergeHyphens && !opts.showPageNums && opts.sec1 && !opts.sec2 && !opts.sec3) {
-      const mergedSec1 = mergeContinuousTexts(data.map(d => d.sec1 || ''));
+      const mergedSec1 = mergeContinuousTexts(pages.map(d => d.sec1 || ''));
       const paragraphs = mergedSec1.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
       const htmlParagraphs = paragraphs.map(p => `<p>${escapeHtml(p)}</p>`).join('\n');
       return {
@@ -1570,15 +1651,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     let htmlBlocks = [];
     const multiSection = (opts.sec1 ? 1 : 0) + (opts.sec2 ? 1 : 0) + (opts.sec3 ? 1 : 0) > 1;
 
-    for (let i = 0; i < data.length; i++) {
-      const item = data[i];
-      const devNum = toDevanagariDigits(item.page);
+    for (let i = 0; i < pages.length; i++) {
+      const item = pages[i];
       let pagePlain = [];
       let pageHtml = [];
 
       if (opts.showPageNums || multiSection) {
-        pagePlain.push(`[पृष्ठम् ${devNum}]`);
-        pageHtml.push(`<div class="book-page-divider">पृष्ठम् ${devNum} (Page ${item.page})</div>`);
+        pagePlain.push(`[${pageLabel(item)}]`);
+        pageHtml.push(`<div class="book-page-divider">${escapeHtml(pageLabel(item))} (PDF ${item.page})</div>`);
       }
 
       if (opts.sec1) {
@@ -1656,7 +1736,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <title>${title}</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Devanagari:wght@400;600;700&family=Tiro+Devanagari+Sanskrit&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Devanagari:wght@400;600;700&family=Tiro+Devanagari+Sanskrit&family=Noto+Serif:ital,wght@0,400;0,600;1,400&display=swap">
 <style>
   @page { size: A4; margin: 2.2cm; }
   body {
@@ -1697,6 +1777,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     vertical-align: top;
   }
   th { background: #f1f5f9; font-weight: bold; }
+  .book-en { font-family: 'Noto Serif', Georgia, serif; line-height: 1.6; }
+  .book-en p { text-align: left; }
+  .book-part-break { border: none; border-top: 1px solid #999; margin: 24pt 25%; page-break-after: always; }
 </style>
 </head>
 <body>
@@ -1705,12 +1788,17 @@ ${bodyHtml}
 </html>`;
   }
 
+  // "015_to_032" for the pages included in the compiled book
+  function pageRangeTag() {
+    const pages = compiledPages(getModalOptions());
+    if (!pages.length) return 'empty';
+    return `${pages[0].page}_to_${pages[pages.length - 1].page}`;
+  }
+
   function downloadWordDoc() {
     const compiled = buildCompiledBookData();
-    const firstPage = data.length > 0 ? data[0].page : '015';
-    const lastPage = data.length > 0 ? data[data.length - 1].page : '032';
     const docHtml = '\ufeff' + buildStandaloneDocumentHtml('श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः', compiled.html);
-    const filename = `bharata_sangraha_${firstPage}_to_${lastPage}.doc`;
+    const filename = `bharata_sangraha_${pageRangeTag()}.doc`;
     triggerFileDownload(filename, docHtml, 'application/msword;charset=utf-8');
     showToast(`📘 Word सञ्चिका (${filename}) अवतारिता!`);
   }
@@ -1740,15 +1828,13 @@ ${bodyHtml}
       data[currentIndex].sec2 = sec2Editor.value;
     }
     const opts = getModalOptions();
-    const blocks = data.map(item => buildPageMarkdown(item, opts).trim());
+    const blocks = compiledPages(opts).map(item => buildPageMarkdown(item, opts).trim());
     return blocks.join('\n\n---\n\n') + '\n';
   }
 
   function downloadCompiledMarkdown() {
     const md = generateAllPagesMarkdownString();
-    const firstPage = data.length > 0 ? data[0].page : '000';
-    const lastPage = data.length > 0 ? data[data.length - 1].page : '000';
-    const filename = `bharata_sangraha_pages_${firstPage}_to_${lastPage}.md`;
+    const filename = `bharata_sangraha_pages_${pageRangeTag()}.md`;
     triggerFileDownload(filename, md, 'text/markdown;charset=utf-8');
     showToast(`⬇ ${filename} अवतारितम् (Downloaded .md)`);
   }
@@ -1853,7 +1939,7 @@ ${bodyHtml}
 </body>
 </html>"""
 
-def generate_viewer():
+def generate_viewer(standalone=False):
     md_files = sorted(glob.glob(os.path.join(RAW_DIR, "page_*.md")))
     if not md_files:
         print(f"[Error] No markdown files found in {RAW_DIR}/.")
@@ -1865,13 +1951,19 @@ def generate_viewer():
         if not match:
             continue
         p_num = match.group(1)
-        img_path = os.path.join(PAGE_IMAGES, f"page_{p_num}.png")
+        jpg_path = ensure_web_image(p_num)
 
-        if not os.path.exists(img_path):
+        if not jpg_path:
+            print(f"[Warning] No image for page {p_num} in {PAGE_IMAGES}/ or {WEB_IMAGE_DIR}/. Skipping.")
             continue
 
-        with open(img_path, "rb") as img_f:
-            img_b64 = base64.b64encode(img_f.read()).decode("utf-8")
+        with open(jpg_path, "rb") as img_f:
+            img_bytes = img_f.read()
+        if standalone:
+            img_src = "data:image/jpeg;base64," + base64.b64encode(img_bytes).decode("utf-8")
+        else:
+            # Content hash in the query string so browsers refetch a scan only when it changes
+            img_src = f"{WEB_IMAGE_DIR}/page_{p_num}.jpg?v={hashlib.sha1(img_bytes).hexdigest()[:10]}"
 
         with open(md_path, "r", encoding="utf-8") as md_f:
             raw_text = md_f.read()
@@ -1881,7 +1973,7 @@ def generate_viewer():
         pages_data.append({
             "page": p_num,
             **page_metadata(int(p_num)),
-            "img": img_b64,
+            "img": img_src,
             "sec1": sec1,
             "sec2": sec2,
             "sec3_md": sec3_md,
@@ -1892,10 +1984,14 @@ def generate_viewer():
     final_html = HTML_TEMPLATE.replace("<!-- JSON_DATA_PLACEHOLDER -->", json_data)
     final_html = final_html.replace("<!-- APPS_SCRIPT_URL_PLACEHOLDER -->", APPS_SCRIPT_URL)
 
-    os.makedirs(os.path.dirname(OUTPUT_HTML), exist_ok=True)
-    with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
+    output_html = STANDALONE_HTML if standalone else SITE_HTML
+    os.makedirs(os.path.dirname(output_html) or ".", exist_ok=True)
+    with open(output_html, "w", encoding="utf-8") as f:
         f.write(final_html)
-    print(f"[Success] Generated review portal: {OUTPUT_HTML} (Loaded {len(pages_data)} pages)")
+    print(f"[Success] Generated review portal: {output_html} (Loaded {len(pages_data)} pages)")
 
 if __name__ == "__main__":
-    generate_viewer()
+    parser = argparse.ArgumentParser(description="Build the proofreading portal from output/raw/ and page images.")
+    parser.add_argument("--standalone", action="store_true",
+                        help=f"write a single offline file with embedded scans to {STANDALONE_HTML} instead of {SITE_HTML}")
+    generate_viewer(standalone=parser.parse_args().standalone)

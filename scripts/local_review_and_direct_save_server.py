@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Local Review & Verification HTTP Server
-Serves the proofreading bundle and handles direct POST requests to save verified
+Serves the proofreading portal (index.html) and handles direct POST requests to save verified
 pages directly into output/verified/ without browser download prompts.
 """
 
@@ -73,7 +73,7 @@ def run_server():
     httpd = http.server.HTTPServer(server_address, ReviewHandler)
     print("=" * 60)
     print(f"Bhārata Saṅgraha Local Review Server")
-    print(f"Running at: http://localhost:{PORT}/output/proofread_bundle.html")
+    print(f"Running at: http://localhost:{PORT}/")
     print(f"Verified files target: {VERIFIED_DIR}")
     print("=" * 60)
     try:
