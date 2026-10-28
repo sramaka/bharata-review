@@ -673,6 +673,38 @@
     text-align: justify;
     white-space: pre-wrap;
   }
+  .book-toc {
+    border: 1px solid #e7e5e4;
+    border-radius: 8px;
+    background: #fafaf9;
+    padding: 12px 20px;
+    margin-bottom: 24px;
+    font-family: 'Noto Serif Devanagari', serif;
+    line-height: 1.6;
+  }
+  .book-toc-title {
+    font-size: 0.9em;
+    color: #7c2d12;
+    margin: 0 0 8px 0;
+  }
+  .toc-table { width: 100%; border-collapse: collapse; font-size: 0.8em; }
+  .toc-table td { padding: 2px 0; border: none; }
+  .toc-table a { color: #1e3a8a; text-decoration: none; }
+  .toc-table a:hover { text-decoration: underline; }
+  .toc-pages { text-align: right; white-space: nowrap; color: #78716c; }
+  .toc-part td { font-weight: 700; color: #7c2d12; padding-top: 8px; }
+  .book-part-heading, .book-section-heading {
+    font-family: 'Noto Serif Devanagari', serif;
+    text-align: center;
+    color: #7c2d12;
+  }
+  .book-part-heading { font-size: 1.25em; margin: 36px 0 8px 0; }
+  .book-section-heading {
+    font-size: 1.1em;
+    margin: 32px 0 16px 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #fed7aa;
+  }
   .book-page-divider {
     font-family: 'Noto Serif Devanagari', system-ui, sans-serif;
     font-size: 0.78em;
@@ -687,11 +719,6 @@
   }
   .book-en { font-family: 'Noto Serif', Georgia, serif; line-height: 1.6; }
   .book-en p { text-align: left; }
-  .book-part-break {
-    border: none;
-    border-top: 1px solid #d6d3d1;
-    margin: 28px 25%;
-  }
   .book-sec-heading {
     font-family: 'Noto Serif Devanagari', system-ui, sans-serif;
     font-size: 0.85em;
@@ -1474,15 +1501,23 @@
     if (!opts.sec1 && !opts.sec2 && !opts.sec3) {
       return {
         plain: 'कृपया न्यूनातिन्यूनम् एकं विभागं चिनोतु (Please select at least one section above).',
-        html: '<p class="empty-note">कृपया न्यूनातिन्यूनम् एकं विभागं चिनोतु (Please select at least one section above).</p>'
+        html: '<p class="empty-note">कृपया न्यूनातिन्यूनम् एकं विभागं चिनोतु (Please select at least one section above).</p>',
+        toc: []
       };
     }
 
+    // Each section (Foreword, a parva, ...) gets a heading and a TOC entry with its printed page range
     const pages = compiledPages(opts);
     const parts = { front: [], main: [] };
-    groupBySection(pages).forEach(group => {
+    const toc = [];
+    groupBySection(pages).forEach((group, k) => {
       const part = compileSectionGroup(group, opts);
       if (group[0].lang === 'en') part.html = `<div class="book-en" lang="en">${part.html}</div>`;
+      const id = `bk-sec-${k + 1}`;
+      const label = group[0].section || pageLabel(group[0]);
+      part.html = `<h2 class="book-section-heading" id="${id}"><a name="${id}"></a>${escapeHtml(label)}</h2>\n${part.html}`;
+      part.plain = `॥ ${label} ॥\n\n${part.plain}`;
+      toc.push({ id, label, range: sectionPageRange(group), front: group[0].front });
       parts[group[0].front ? 'front' : 'main'].push(part);
     });
 
@@ -1491,11 +1526,57 @@
       html: list.map(p => p.html).join('\n')
     });
     const front = joinParts(parts.front), main = joinParts(parts.main);
-    if (!parts.front.length) return { plain: main.plain + '\n', html: main.html };
+    if (!parts.front.length) return { plain: main.plain + '\n', html: main.html, toc };
+    const partHeading = (id, title) => `<h1 class="book-part-heading" id="${id}"><a name="${id}"></a>${title}</h1>`;
     return {
-      plain: front.plain + '\n\n* * *\n\n' + main.plain + '\n',
-      html: front.html + '\n<hr class="book-part-break">\n' + main.html
+      plain: `${PART_TITLES.front}\n\n${front.plain}\n\n${PART_TITLES.main}\n\n${main.plain}\n`,
+      html: [partHeading('bk-part-front', PART_TITLES.front), front.html,
+             partHeading('bk-part-main', PART_TITLES.main), main.html].join('\n'),
+      toc
     };
+  }
+
+  const PART_TITLES = { front: 'प्रस्तावनादि (Front Matter)', main: 'मूलग्रन्थः (Main Text)' };
+
+  // Printed page range covered by a section: "पृ. १–१८" for the main text, "iii–vii" for front matter
+  function sectionPageRange(group) {
+    const nums = group.map(p => p.book_page).filter(Boolean);
+    if (!nums.length) return '';
+    const first = nums[0], last = nums[nums.length - 1];
+    const range = first === last ? first : `${first}–${last}`;
+    return group[0].lang === 'en' ? range : `पृ. ${range}`;
+  }
+
+  // Linked table of contents (works as hyperlinks in Word and as internal links in the PDF)
+  function buildTocHtml(toc) {
+    if (!toc.length) return '';
+    const hasFront = toc.some(t => t.front);
+    const rows = [];
+    let lastPart = null;
+    toc.forEach(t => {
+      if (hasFront && t.front !== lastPart) {
+        const partId = t.front ? 'bk-part-front' : 'bk-part-main';
+        rows.push(`<tr class="toc-part"><td colspan="2"><a href="#${partId}">${t.front ? PART_TITLES.front : PART_TITLES.main}</a></td></tr>`);
+        lastPart = t.front;
+      }
+      rows.push(`<tr><td class="toc-label"><a href="#${t.id}">${escapeHtml(t.label)}</a></td><td class="toc-pages">${escapeHtml(t.range)}</td></tr>`);
+    });
+    return `<div class="book-toc"><h2 class="book-toc-title" id="bk-toc"><a name="bk-toc"></a>अनुक्रमणिका (Table of Contents)</h2>
+<table class="toc-table">${rows.join('\n')}</table></div>`;
+  }
+
+  function buildTitlePageHtml(opts) {
+    const pages = compiledPages(opts);
+    const included = [opts.sec1 && 'मूलपाठः', opts.sec2 && 'पदच्छेदः', opts.sec3 && 'सम्पादनटिप्पण्यः'].filter(Boolean).join(' · ');
+    const range = pages.length ? `PDF ${pages[0].page}–${pages[pages.length - 1].page}` : '';
+    const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    return `<div class="title-page">
+<p class="tp-shri">॥ श्रीः ॥</p>
+<p class="tp-author">महामहोपाध्याय-श्रीमल्लक्ष्मणसूरिविरचितः</p>
+<h1 class="tp-title">भारतसङ्ग्रहः</h1>
+<p class="tp-latin">Bhārata Saṅgraha<br>by Mahāmahopādhyāya M. Lakshmana Suri</p>
+<p class="tp-meta">${included}<br>${range} · शोधनप्रतिः (Proofreading draft) · ${date}</p>
+</div>`;
   }
 
   function compileSectionGroup(pages, opts) {
@@ -1521,7 +1602,7 @@
 
       if (opts.showPageNums || multiSection) {
         pagePlain.push(`[${pageLabel(item)}]`);
-        pageHtml.push(`<div class="book-page-divider">${escapeHtml(pageLabel(item))} (PDF ${item.page})</div>`);
+        pageHtml.push(`<h3 class="book-page-divider">${escapeHtml(pageLabel(item))} (PDF ${item.page})</h3>`);
       }
 
       if (opts.sec1) {
@@ -1567,7 +1648,7 @@
 
   function refreshCompiledView() {
     const compiled = buildCompiledBookData();
-    bookPreviewSheet.innerHTML = compiled.html;
+    bookPreviewSheet.innerHTML = buildTocHtml(compiled.toc) + compiled.html;
   }
 
   function openAllPagesModal() {
@@ -1591,6 +1672,12 @@
     copyToClipboard(compiled.plain, `✔ सम्पूर्णः पाठः प्रतिकृतः — Word / Docs मध्ये स्थापयतु (Copied! Paste anywhere)`, richHtml);
   }
 
+  function buildExportDocumentHtml() {
+    const compiled = buildCompiledBookData();
+    const body = buildTitlePageHtml(getModalOptions()) + '\n' + buildTocHtml(compiled.toc) + '\n' + compiled.html;
+    return buildStandaloneDocumentHtml('श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः', body);
+  }
+
   function buildStandaloneDocumentHtml(title, bodyHtml) {
     return `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -1601,7 +1688,12 @@
 <title>${title}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Devanagari:wght@400;600;700&family=Tiro+Devanagari+Sanskrit&family=Noto+Serif:ital,wght@0,400;0,600;1,400&display=swap">
 <style>
-  @page { size: A4; margin: 2.2cm; }
+  @page {
+    size: A4;
+    margin: 2.2cm;
+    @bottom-center { content: counter(page); font-size: 10pt; color: #666666; }
+  }
+  @page :first { @bottom-center { content: none; } }
   body {
     font-family: 'Noto Serif Devanagari', 'Tiro Devanagari Sanskrit', 'Siddhanta', serif;
     font-size: 15pt;
@@ -1612,13 +1704,44 @@
     padding: 20px;
   }
   p { margin: 0 0 14pt 0; text-align: justify; white-space: pre-wrap; }
-  .book-page-divider {
-    font-size: 12pt;
+  .title-page { text-align: center; padding-top: 18%; page-break-after: always; }
+  .title-page p { text-align: center; white-space: normal; }
+  .tp-shri { font-size: 16pt; }
+  .tp-author { font-size: 17pt; margin-top: 48pt; }
+  .tp-title { font-size: 36pt; color: #7c2d12; margin: 6pt 0 36pt 0; }
+  .tp-latin { font-family: 'Noto Serif', Georgia, serif; font-size: 13pt; line-height: 1.5; }
+  .tp-meta { font-family: 'Noto Serif', Georgia, serif; font-size: 10.5pt; line-height: 1.6; color: #555555; margin-top: 72pt; }
+  .book-toc-title { font-size: 20pt; color: #7c2d12; text-align: center; margin: 0 0 18pt 0; }
+  table.toc-table { border-collapse: collapse; width: 100%; margin: 0; font-size: 14pt; }
+  table.toc-table td { border: none; padding: 3pt 0; }
+  table.toc-table a { color: #111827; text-decoration: none; }
+  .toc-pages { text-align: right; white-space: nowrap; color: #555555; }
+  .toc-part td { font-weight: bold; color: #7c2d12; padding-top: 12pt; }
+  h1.book-part-heading {
+    font-size: 26pt;
+    color: #7c2d12;
+    text-align: center;
+    padding-top: 30%;
+    page-break-before: always;
+  }
+  h2.book-section-heading {
+    font-size: 20pt;
+    color: #7c2d12;
+    text-align: center;
+    margin: 0 0 18pt 0;
+    padding-bottom: 6pt;
+    border-bottom: 1px solid #fed7aa;
+    page-break-before: always;
+    page-break-after: avoid;
+  }
+  h3.book-page-divider {
+    font-size: 11pt;
     font-weight: bold;
     color: #9a3412;
     margin-top: 18pt;
     margin-bottom: 6pt;
     border-bottom: 1px solid #fed7aa;
+    page-break-after: avoid;
   }
   .book-sec-heading {
     font-size: 13pt;
@@ -1642,7 +1765,6 @@
   th { background: #f1f5f9; font-weight: bold; }
   .book-en { font-family: 'Noto Serif', Georgia, serif; line-height: 1.6; }
   .book-en p { text-align: left; }
-  .book-part-break { border: none; border-top: 1px solid #999; margin: 24pt 25%; page-break-after: always; }
 </style>
 </head>
 <body>
@@ -1659,16 +1781,14 @@ ${bodyHtml}
   }
 
   function downloadWordDoc() {
-    const compiled = buildCompiledBookData();
-    const docHtml = '\ufeff' + buildStandaloneDocumentHtml('श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः', compiled.html);
+    const docHtml = '\ufeff' + buildExportDocumentHtml();
     const filename = `bharata_sangraha_${pageRangeTag()}.doc`;
     triggerFileDownload(filename, docHtml, 'application/msword;charset=utf-8');
     showToast(`📘 Word सञ्चिका (${filename}) अवतारिता!`);
   }
 
   function printOrSavePdf() {
-    const compiled = buildCompiledBookData();
-    const docHtml = buildStandaloneDocumentHtml('श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः', compiled.html);
+    const docHtml = buildExportDocumentHtml();
     const printWin = window.open('', '_blank');
     if (!printWin) {
       alert('कृपया Pop-up अनुमन्यताम् (Please allow pop-ups to print or save as PDF).');
