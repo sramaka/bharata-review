@@ -29,7 +29,7 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 │   ├── verified/                              # Scholar-verified final markdown files
 │   └── proofread_bundle.html                  # (git-ignored) Generated standalone reviewer portal
 ├── scripts/
-│   ├── extract_pages.py                       # PyMuPDF 300 DPI extractor (page range set by START_PAGE / END_PAGE)
+│   ├── extract_pages.py                       # PyMuPDF extractor: extract_pages.py START END [--dpi N]
 │   ├── build_html_review.py                   # Bundles images (base64) + parsed text into the web portal
 │   └── local_review_and_direct_save_server.py # Local HTTP server (port 8000) with POST /save_verified → output/verified/
 ├── index.html                                 # Root GitHub Pages deployment file (copy of proofread_bundle.html)
@@ -38,7 +38,7 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
                                                #   output/proofread_bundle.html, *:Zone.Identifier
 ```
 
-Current coverage: PDF pages **15–32** (18 pages) are extracted and transcribed in `output/raw/`.
+Current coverage in `output/raw/`: front matter on PDF pages **7–13** (Foreword pp. 7–11 and the Preface to the Second Edition on p. 11, in English; Works of the author on p. 12, in IAST; Contents on p. 13, in Devanagari) and the main text on PDF pages **15–32** (Ādiparva, book pages 1–18). Book page = PDF page − 14.
 
 ---
 
@@ -95,10 +95,10 @@ Serves the repo root at `http://localhost:8000/output/proofread_bundle.html` wit
 ## 6. Common Developer / Agent Workflows
 
 ### A. Extract Pages from PDF
-Adjust `START_PAGE` / `END_PAGE` in the script (currently 15–32), then:
 ```bash
 source venv/bin/activate
-python3 scripts/extract_pages.py
+python3 scripts/extract_pages.py 15 32          # START END (1-indexed PDF pages, inclusive)
+python3 scripts/extract_pages.py 7 13 --dpi 400 # optional render resolution (default 300)
 ```
 
 ### B. Transcribe a Target Page

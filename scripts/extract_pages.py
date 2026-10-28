@@ -2,7 +2,11 @@
 """
 Sanskrit OCR Pipeline - High-DPI Page Extractor
 Converts specified PDF pages to 300 DPI PNG images for OCR processing.
+
+Usage:
+    python3 scripts/extract_pages.py START_PAGE END_PAGE [--dpi DPI]
 """
+import argparse
 import sys
 from pathlib import Path
 import pymupdf
@@ -12,10 +16,7 @@ WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 INPUT_PDF = WORKSPACE_DIR / "input_pdf" / "bharata_sangraha.pdf"
 OUTPUT_DIR = WORKSPACE_DIR / "page_images"
 
-# Target page range (1-indexed for user input)
-START_PAGE = 15
-END_PAGE = 32
-TARGET_DPI = 300
+DEFAULT_DPI = 300
 
 def render_pages(pdf_path: Path, output_dir: Path, start: int, end: int, dpi: int):
     if not pdf_path.exists():
@@ -47,5 +48,16 @@ def render_pages(pdf_path: Path, output_dir: Path, start: int, end: int, dpi: in
     doc.close()
     print("[Success] Page extraction complete.")
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Render PDF pages to PNG images for OCR.")
+    parser.add_argument("start", type=int, help="First page to extract (1-indexed, inclusive)")
+    parser.add_argument("end", type=int, help="Last page to extract (1-indexed, inclusive)")
+    parser.add_argument("--dpi", type=int, default=DEFAULT_DPI, help=f"Render resolution (default: {DEFAULT_DPI})")
+    args = parser.parse_args()
+    if args.start > args.end:
+        parser.error("start page must not be greater than end page")
+    return args
+
 if __name__ == "__main__":
-    render_pages(INPUT_PDF, OUTPUT_DIR, START_PAGE, END_PAGE, TARGET_DPI)
+    args = parse_args()
+    render_pages(INPUT_PDF, OUTPUT_DIR, args.start, args.end, args.dpi)
