@@ -13,6 +13,38 @@ APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrgtnxcAj0Z7skBCbaAe
 
 DEVANAGARI_DIGITS = str.maketrans("0123456789", "०१२३४५६७८९")
 
+# Printed book page = PDF page - BOOK_PAGE_OFFSET (book page 1 is PDF page 15)
+BOOK_PAGE_OFFSET = 14
+
+# Parva ranges in printed book pages, from the Contents (PDF page 13)
+PARVAS = [
+    (1, 18, "आदिपर्व"), (19, 29, "सभापर्व"), (30, 41, "वनपर्व"), (42, 53, "विराटपर्व"),
+    (54, 69, "उद्योगपर्व"), (70, 78, "भीष्मपर्व"), (79, 94, "द्रोणपर्व"), (95, 103, "कर्णपर्व"),
+    (104, 109, "शल्यपर्व"), (110, 112, "सौप्तिकपर्व"), (113, 117, "स्त्रीपर्व"), (118, 123, "शान्तिपर्व"),
+    (124, 125, "अनुशासनपर्व"), (126, 129, "अश्वमेधपर्व"), (130, 132, "आश्रमवासपर्व"), (133, 135, "मौसलपर्व"),
+    (136, 138, "महाप्रस्थानपर्व"), (139, 141, "स्वर्गारोहणपर्व"), (142, 143, "भगवद्दण्डकः"),
+]
+
+# Front matter by PDF page: (section label, printed page number, language)
+FRONT_MATTER = {
+    7: ("प्रस्तावना (Foreword)", "iii", "en"),
+    8: ("प्रस्तावना (Foreword)", "iv", "en"),
+    9: ("प्रस्तावना (Foreword)", "v", "en"),
+    10: ("प्रस्तावना (Foreword)", "vi", "en"),
+    11: ("प्रस्तावना (Foreword)", "vii", "en"),
+    12: ("ग्रन्थकर्तुः कृतयः (Works)", "", "en"),
+    13: ("विषयसूची (Contents)", "", "sa"),
+}
+
+def page_metadata(pdf_page):
+    """Return section label, printed page number and language for a PDF page."""
+    if pdf_page in FRONT_MATTER:
+        section, printed, lang = FRONT_MATTER[pdf_page]
+        return {"section": section, "book_page": printed, "lang": lang}
+    book_page = pdf_page - BOOK_PAGE_OFFSET
+    section = next((name for lo, hi, name in PARVAS if lo <= book_page <= hi), "")
+    return {"section": section, "book_page": to_devanagari_num(book_page) if book_page > 0 else "", "lang": "sa"}
+
 def to_devanagari_num(num_str):
     return str(num_str).translate(DEVANAGARI_DIGITS)
 
@@ -82,12 +114,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः — शोधनपुटम्</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Sanskrit:ital@0;1&family=Noto+Serif+Devanagari:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Sanskrit:ital@0;1&family=Noto+Serif+Devanagari:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Serif:ital,wght@0,400;0,600;1,400&display=swap">
 <style>
   :root {
     --font-family: 'Tiro Devanagari Sanskrit', 'Noto Serif Devanagari', serif;
     --font-size: 22px;
-    --line-height: 2.15;
+    --line-height: 1.75;
     --bg-header: #182232;
     --bg-header-group: #233044;
     --border-header: #334155;
@@ -99,9 +131,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     --card-bg: #ffffff;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body {
     margin: 0;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Noto Sans Devanagari', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 15px;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -137,22 +171,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     letter-spacing: 0.3px;
     white-space: nowrap;
   }
-  .page-progress-pill {
-    background: #0f172a;
-    color: #94a3b8;
-    font-size: 12px;
-    padding: 3px 10px;
-    border-radius: 999px;
-    border: 1px solid #334155;
-    white-space: nowrap;
-  }
 
   .toolbar {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    flex: 1;
   }
+  .toolbar-spacer { flex: 1; }
   .toolbar-group {
     display: flex;
     align-items: center;
@@ -161,9 +188,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     padding: 4px 6px;
     border-radius: 8px;
     border: 1px solid #334155;
+    flex-wrap: wrap;
   }
   .toolbar-label {
-    font-size: 12px;
+    font-size: 13px;
     color: #94a3b8;
     padding: 0 4px;
     white-space: nowrap;
@@ -173,12 +201,18 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     background: #334155;
     color: #f8fafc;
     border: 1px solid #475569;
-    padding: 5px 10px;
+    padding: 6px 12px;
+    min-height: 36px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
+    font-family: inherit;
     outline: none;
     line-height: 1.3;
+  }
+  button:focus-visible, select:focus-visible, input:focus-visible {
+    outline: 2px solid #38bdf8;
+    outline-offset: 2px;
   }
   button, select {
     cursor: pointer;
@@ -201,43 +235,58 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   .num-input {
-    width: 52px;
+    width: 60px;
     text-align: center;
     font-weight: 600;
-    color: #38bdf8;
-    background: #0f172a;
-    border-color: #0284c7;
     padding: 4px 6px;
   }
 
-  .nav-btn { background: #0284c7; border-color: #0369a1; font-weight: 600; }
-  .nav-btn:hover:not(:disabled) { background: #0369a1; border-color: #38bdf8; }
-
-  .action-btn {
-    background: #334155;
-    border-color: #475569;
-    color: #e2e8f0;
-  }
-  .action-btn.primary-outline {
-    background: #1e293b;
-    border-color: #0ea5e9;
-    color: #38bdf8;
-  }
-  .action-btn.primary-outline:hover {
-    background: #0284c7;
-    color: #ffffff;
-  }
+  .nav-btn { font-weight: 600; }
 
   .export-btn {
-    background: #7c3aed;
-    border-color: #6d28d9;
-    color: #ffffff;
+    background: transparent;
+    border-color: #64748b;
+    color: #f8fafc;
     font-weight: 600;
   }
-  .export-btn:hover {
-    background: #6d28d9;
-    border-color: #a78bfa;
+
+  /* Settings (font, size, copy) popover */
+  .settings-wrap { position: relative; }
+  .settings-btn { font-size: 17px; padding: 6px 10px; }
+  .settings-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 50;
+    width: 290px;
+    background: #ffffff;
+    color: #1e293b;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
+  .menu-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+  }
+  .menu-row { display: flex; align-items: center; gap: 6px; }
+  .settings-menu select, .settings-menu button, .settings-menu input {
+    background: #f8fafc;
+    color: #1e293b;
+    border-color: #cbd5e1;
+  }
+  .settings-menu button:hover:not(:disabled), .settings-menu select:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+  }
+  .settings-menu select { width: 100%; }
+  .menu-sep { height: 1px; background: #e2e8f0; margin: 4px 0; }
+  .menu-item { justify-content: flex-start; width: 100%; white-space: normal; text-align: left; }
 
   .save-btn {
     background: var(--accent-green);
@@ -246,7 +295,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     color: #ffffff;
     padding: 6px 14px;
   }
-  .save-btn:hover { background: #15803d; border-color: #4ade80; }
+  .save-btn:hover:not(:disabled) { background: #15803d; border-color: #4ade80; }
 
   .section-toggle {
     background: #1e293b;
@@ -264,7 +313,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .main-container {
     display: flex;
     flex: 1;
-    height: calc(100vh - 54px);
+    min-height: 0;
     overflow: hidden;
     position: relative;
   }
@@ -403,19 +452,31 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     font-weight: 700;
     color: #7c2d12;
   }
-  .page-utility-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
+  .page-pdf-num {
+    font-family: 'Noto Sans Devanagari', system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: #78716c;
   }
+  .status-chip {
+    font-family: 'Noto Sans Devanagari', system-ui, sans-serif;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 3px 12px;
+    border-radius: 999px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .status-chip.unreviewed { color: #57534e; background: #f5f5f4; border-color: #d6d3d1; }
+  .status-chip.edited { color: #92400e; background: #fffbeb; border-color: #fcd34d; }
+  .status-chip.saved { color: #166534; background: #f0fdf4; border-color: #86efac; }
 
   .light-btn {
     background: #f8fafc;
     color: #334155;
     border: 1px solid #cbd5e1;
-    padding: 5px 10px;
-    font-size: 12.5px;
+    padding: 6px 12px;
+    font-size: 13.5px;
     font-weight: 600;
     border-radius: 6px;
   }
@@ -423,15 +484,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     background: #f1f5f9;
     border-color: #94a3b8;
     color: #0f172a;
-  }
-  .light-btn.amber {
-    background: #fffbeb;
-    color: #92400e;
-    border-color: #fcd34d;
-  }
-  .light-btn.amber:hover {
-    background: #fef3c7;
-    border-color: #f59e0b;
   }
 
   /* Editor Cards */
@@ -486,26 +538,69 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
   }
 
-  .diff-view-box {
+  .lang-en .sanskrit-editor { font-family: 'Noto Serif', Georgia, serif; }
+
+  /* Real-Time Proof Marks: sticky panel pinned to the bottom of the text pane */
+  .proof-panel {
+    position: sticky;
+    bottom: 0;
+    margin-top: auto;
+    max-width: 920px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
     background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-top: 3px solid #d97706;
+    border-radius: 10px 10px 0 0;
+    box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.10);
+    z-index: 5;
+  }
+  .proof-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 14px;
+    font-weight: 700;
+    color: #92400e;
+  }
+  .proof-head-actions { display: flex; gap: 6px; }
+  .proof-list, .proof-full {
+    max-height: 32vh;
+    overflow-y: auto;
+    padding: 0 14px 12px 14px;
+  }
+  .proof-list { display: flex; flex-direction: column; gap: 6px; }
+  .change-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: #ffffff;
+    color: #1c1917;
     border: 1px solid #fde68a;
-    border-radius: 8px;
-    padding: 16px 18px;
-    margin-top: 8px;
+    font-family: var(--font-family);
+    font-size: calc(var(--font-size) * 0.85);
+    line-height: 1.6;
+    white-space: normal;
+  }
+  .change-item:hover:not(:disabled) { background: #fef9c3; border-color: #f59e0b; }
+  .change-item .ctx { color: #78716c; }
+  .proof-full {
     font-family: var(--font-family);
     font-size: var(--font-size);
     line-height: var(--line-height);
     white-space: pre-wrap;
+    background: #ffffff;
+    margin: 0 14px 12px 14px;
+    padding: 12px 14px;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
   }
-  
-  .mark-edited {
-    background-color: #fef08a !important;
-    color: #92400e !important;
-    border-bottom: 2px dotted #d97706;
-    padding: 2px 4px;
-    border-radius: 3px;
-    font-weight: 500;
-  }
+  .proof-panel ins, .proof-panel del { text-decoration: none; padding: 1px 3px; border-radius: 3px; }
+  .proof-panel ins { background: #fef08a; color: #92400e; border-bottom: 2px solid #d97706; }
+  .proof-panel del { background: #fee2e2; color: #991b1b; text-decoration: line-through; }
 
   .collapsible-section { display: none; }
   .collapsible-section.visible { display: block; }
@@ -652,25 +747,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .btn-copy-big:hover {
     background: #0369a1;
   }
-  .btn-word {
-    background: #1d4ed8;
-    border-color: #1e40af;
-    color: #ffffff;
+  .btn-export-light {
+    background: #ffffff;
+    border-color: #cbd5e1;
+    color: #1e293b;
     font-weight: 600;
-    padding: 6px 12px;
   }
-  .btn-word:hover {
-    background: #1e40af;
-  }
-  .btn-pdf {
-    background: #b45309;
-    border-color: #92400e;
-    color: #ffffff;
-    font-weight: 600;
-    padding: 6px 12px;
-  }
-  .btn-pdf:hover {
-    background: #92400e;
+  .btn-export-light:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: #94a3b8;
   }
   .modal-body {
     padding: 20px 24px;
@@ -753,6 +838,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     .pane { height: auto; max-height: 75vh; width: 100% !important; max-width: 100% !important; }
     .pane-resizer { display: none; }
     .image-pane { border-right: none; border-bottom: 2px solid #0f172a; }
+    .toolbar-spacer { display: none; }
   }
 </style>
 </head>
@@ -760,10 +846,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 <header>
   <div class="brand-area">
-    <div class="app-title">॥ श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः — शोधनपुटम् ॥</div>
-    <span id="pageProgressPill" class="page-progress-pill">पृष्ठम् १ / १</span>
+    <div class="app-title" title="श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः — शोधनपुटम् (Proofreading Portal)">॥ भारतसङ्ग्रहः ॥</div>
   </div>
-  
+
   <div class="toolbar">
     <!-- Navigation Group -->
     <div class="toolbar-group" title="पृष्ठ-सञ्चालनम् (Page Navigation — Alt + Left/Right)">
@@ -772,33 +857,38 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button id="nextBtn" class="nav-btn" onclick="nextPage()">परम् ›</button>
     </div>
 
-    <!-- Typography Group -->
-    <div class="toolbar-group" title="अक्षरविन्यासः (Typography Controls)">
-      <select id="fontSelect" onchange="changeFont(this.value)" title="लिपिः (Font Family)">
-        <option value="'Tiro Devanagari Sanskrit', serif">Tiro Devanagari</option>
-        <option value="'Noto Serif Devanagari', serif">Noto Serif</option>
-        <option value="Siddhanta, serif">Siddhanta</option>
-      </select>
-      <span class="toolbar-label">आकारः</span>
-      <button onclick="stepFontSize(-2)" title="अक्षराकारं न्यूनीकरोतु (Decrease Font Size)">A−</button>
-      <input type="number" id="fontSizeInput" class="num-input" value="22" min="14" max="48" onchange="setFontSizeNumber(this.value)">
-      <button onclick="stepFontSize(2)" title="अक्षराकारं वर्धयतु (Increase Font Size)">A+</button>
-    </div>
-
     <!-- Section Visibility Group -->
     <div class="toolbar-group" title="विभाग-दर्शनम् (Toggle Sections)">
       <button id="toggleSec2" class="section-toggle" onclick="toggleSection('sec2Box', 'toggleSec2')">+ पदच्छेदः</button>
       <button id="toggleSec3" class="section-toggle" onclick="toggleSection('sec3Box', 'toggleSec3')">+ टिप्पणी</button>
     </div>
 
-    <!-- Copy & Complete Book Export Group -->
-    <div class="toolbar-group">
-      <button class="action-btn primary-outline" onclick="copySectionText('sec1')" title="अस्य पृष्ठस्य मूलपाठं प्रतिकुरुत (Copy this page's Sanskrit text)">
-        📋 पृष्ठ-पाठं प्रतिकुरुत (Copy Page Text)
-      </button>
-      <button class="export-btn" onclick="openAllPagesModal()" title="सम्पूर्णं ग्रन्थं पश्यतु, प्रतिकुरुत, Word / PDF वा अवतारयतु (View, Copy, or Download Complete Book in Word / PDF)">
-        📖 सम्पूर्णः ग्रन्थः (Full Text / Word / PDF)
-      </button>
+    <div class="toolbar-spacer"></div>
+
+    <button class="export-btn" onclick="openAllPagesModal()" title="सम्पूर्णं ग्रन्थं पश्यतु, प्रतिकुरुत, Word / PDF वा अवतारयतु (View, Copy, or Download Complete Book in Word / PDF)">
+      📖 सम्पूर्णः ग्रन्थः
+    </button>
+
+    <!-- Display settings & copy actions -->
+    <div class="settings-wrap" id="settingsWrap">
+      <button id="settingsBtn" class="settings-btn" onclick="toggleSettings()" title="विन्यासाः (Font, size and copy options)" aria-haspopup="true" aria-expanded="false">⚙</button>
+      <div id="settingsMenu" class="settings-menu" hidden>
+        <div class="menu-label">लिपिः (Font)</div>
+        <select id="fontSelect" onchange="changeFont(this.value)">
+          <option value="'Tiro Devanagari Sanskrit', serif">Tiro Devanagari</option>
+          <option value="'Noto Serif Devanagari', serif">Noto Serif</option>
+          <option value="Siddhanta, serif">Siddhanta</option>
+        </select>
+        <div class="menu-label">अक्षराकारः (Text size)</div>
+        <div class="menu-row">
+          <button onclick="stepFontSize(-2)" title="अक्षराकारं न्यूनीकरोतु (Decrease Font Size)">A−</button>
+          <input type="number" id="fontSizeInput" class="num-input" value="22" min="14" max="48" onchange="setFontSizeNumber(this.value)">
+          <button onclick="stepFontSize(2)" title="अक्षराकारं वर्धयतु (Increase Font Size)">A+</button>
+        </div>
+        <div class="menu-sep"></div>
+        <button class="menu-item" onclick="copySectionText('sec1')">📋 मूलपाठं प्रतिकुरुत (Copy page text)</button>
+        <button class="menu-item" onclick="copyCurrentPageFormatted()">📑 सम्पूर्णं पृष्ठं प्रतिकुरुत (Copy page with notes)</button>
+      </div>
     </div>
 
     <!-- Save to Cloud / Server -->
@@ -830,36 +920,22 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <!-- Per-Page Quick Action Bar -->
     <div class="page-utility-bar">
       <div class="page-utility-title">
-        <span id="currentPageHeading">पृष्ठम् ०१५</span>
-        <span id="diffIndicator" style="font-size: 13px; font-weight: normal; color: #16a34a;">✔ अविकृतः (Matches Scan)</span>
+        <span id="currentPageHeading"></span>
+        <span id="pagePdfNum" class="page-pdf-num"></span>
       </div>
-      <div class="page-utility-actions">
-        <button class="light-btn amber" onclick="copySectionText('sec1')" title="केवलं मूलपाठं प्रतिकुरुत (Copy clean Sanskrit text of this page)">
-          📋 मूलपाठं प्रतिकुरुत (Copy Sanskrit Text)
-        </button>
-        <button class="light-btn" onclick="copyCurrentPageFormatted()" title="अस्य पृष्ठस्य सर्वान् विभागान् प्रतिकुरुत (Copy all sections of this page for Word/Docs)">
-          📑 सम्पूर्णं पृष्ठं प्रतिकुरुत (Copy Page w/ Notes)
-        </button>
-      </div>
+      <span id="statusChip" class="status-chip unreviewed"></span>
     </div>
 
     <!-- Section 1: Mulapatha -->
     <div class="card-container">
       <div class="card-header">
-        <span>१. मूलपाठः (Devanagari OCR Text)</span>
+        <span id="sec1Label">१. मूलपाठः (Devanagari OCR Text)</span>
         <div class="card-header-right">
           <button class="light-btn" onclick="copySectionText('sec1')" title="Copy Mūlapāṭha text">📋 प्रतिकुरुत (Copy)</button>
           <button id="revertBtn" class="light-btn" style="display: none; color: #b91c1c; border-color: #fecaca;" onclick="revertCurrentPage()" title="मूलपाठं प्रत्यानयतु (Revert edits to original OCR)">↺ पूर्ववत् (Revert)</button>
         </div>
       </div>
       <textarea id="sec1Editor" class="sanskrit-editor" spellcheck="false" oninput="handleEdit()"></textarea>
-      
-      <div id="diffBox" style="margin-top: 14px; display: none;">
-        <div style="font-size: 13px; color: #b45309; font-weight: 600; margin-bottom: 6px;">
-          दृष्टं शोधनम् (Real-Time Proof Marks — Changes Highlighted):
-        </div>
-        <div id="diffView" class="diff-view-box"></div>
-      </div>
     </div>
 
     <!-- Section 2: Padaccheda -->
@@ -882,6 +958,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
       </div>
       <div id="sec3Content"></div>
+    </div>
+
+    <!-- Real-Time Proof Marks (pinned to the bottom of the pane while editing) -->
+    <div id="proofPanel" class="proof-panel" hidden>
+      <div class="proof-head">
+        <span id="proofTitle">दृष्टं शोधनम्</span>
+        <div class="proof-head-actions">
+          <button id="proofModeBtn" class="light-btn" onclick="toggleProofMode()">पूर्णपाठे पश्यतु (Show in full text)</button>
+          <button id="proofCollapseBtn" class="light-btn" onclick="toggleProofCollapse()" title="संवृणोतु / विवृणोतु (Collapse / Expand)">▾</button>
+        </div>
+      </div>
+      <div id="proofList" class="proof-list"></div>
+      <div id="proofFull" class="proof-full" hidden></div>
     </div>
   </div>
 </div>
@@ -923,13 +1012,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <button class="btn-copy-big" onclick="copyCompiledBook()" title="Word, Google Docs, Email आदौ स्थापयितुं पाठं प्रतिकुरुत (Copy clean text for Word, Google Docs, or Email)">
           📋 पाठं प्रतिकुरुत (Copy Text)
         </button>
-        <button class="btn-word" onclick="downloadWordDoc()" title="Microsoft Word (.doc) सञ्चिकां अवतारयतु (Download Word Document)">
+        <button class="btn-export-light" onclick="downloadWordDoc()" title="Microsoft Word (.doc) सञ्चिकां अवतारयतु (Download Word Document)">
           📘 Word (.doc)
         </button>
-        <button class="btn-pdf" onclick="printOrSavePdf()" title="PDF रूपेण रक्षतु अथवा मुद्रयतु (Save as PDF or Print)">
+        <button class="btn-export-light" onclick="printOrSavePdf()" title="PDF रूपेण रक्षतु अथवा मुद्रयतु (Save as PDF or Print)">
           🖨️ PDF / मुद्रणम्
         </button>
-        <button class="action-btn" onclick="downloadCompiledMarkdown()" title="Markdown (.md) सञ्चिकां अवतारयतु">
+        <button class="btn-export-light" onclick="downloadCompiledMarkdown()" title="Markdown (.md) सञ्चिकां अवतारयतु">
           ⬇ .md
         </button>
       </div>
@@ -952,16 +1041,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   const select = document.getElementById('pageSelect');
   const prevBtn = document.getElementById('prevBtn');
   const nextBtn = document.getElementById('nextBtn');
-  const pageProgressPill = document.getElementById('pageProgressPill');
   const currentPageHeading = document.getElementById('currentPageHeading');
+  const pagePdfNum = document.getElementById('pagePdfNum');
+  const statusChip = document.getElementById('statusChip');
+  const textPane = document.getElementById('textPane');
+  const sec1Label = document.getElementById('sec1Label');
+  const toggleSec2Btn = document.getElementById('toggleSec2');
+  const settingsWrap = document.getElementById('settingsWrap');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsMenu = document.getElementById('settingsMenu');
+  const proofPanel = document.getElementById('proofPanel');
+  const proofTitle = document.getElementById('proofTitle');
+  const proofList = document.getElementById('proofList');
+  const proofFull = document.getElementById('proofFull');
+  const proofModeBtn = document.getElementById('proofModeBtn');
+  const proofCollapseBtn = document.getElementById('proofCollapseBtn');
   const sec1Editor = document.getElementById('sec1Editor');
   const sec2Editor = document.getElementById('sec2Editor');
   const sec3Content = document.getElementById('sec3Content');
   const pageImg = document.getElementById('pageImg');
   const fontSizeInput = document.getElementById('fontSizeInput');
-  const diffBox = document.getElementById('diffBox');
-  const diffView = document.getElementById('diffView');
-  const diffIndicator = document.getElementById('diffIndicator');
   const revertBtn = document.getElementById('revertBtn');
   const saveBtn = document.getElementById('saveBtn');
   const zoomLabel = document.getElementById('zoomLabel');
@@ -990,11 +1089,56 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     textarea.style.height = Math.max(120, textarea.scrollHeight + 8) + 'px';
   }
 
+  /* Page labels: "आदिपर्व · पृ. ३" for the main text, section name (+ printed numeral) for front matter */
+  function pageLabel(item) {
+    const parts = [];
+    if (item.section) parts.push(item.section);
+    if (item.book_page) parts.push(item.lang === 'en' ? item.book_page : `पृ. ${item.book_page}`);
+    return parts.length ? parts.join(' · ') : `पृष्ठम् ${toDevanagariDigits(item.page)}`;
+  }
+
+  const STATUS_TEXT = {
+    unreviewed: '○ अपरीक्षितम् (Not yet saved)',
+    edited: '● संशोधितम्, अरक्षितम् (Edited — not saved)',
+    saved: '✔ रक्षितम् (Saved)'
+  };
+  const STATUS_MARK = { unreviewed: '', edited: '● ', saved: '✔ ' };
+
+  function pageStatus(item) {
+    if (item.baseline === undefined) return 'unreviewed';
+    const changed = item.sec1 !== item.baseline || item.sec2 !== item.sec2Baseline;
+    if (item.savedSnapshot !== undefined) {
+      return buildPageMarkdown(item) === item.savedSnapshot ? 'saved' : 'edited';
+    }
+    return changed ? 'edited' : 'unreviewed';
+  }
+
+  function refreshPageOption(idx) {
+    const item = data[idx];
+    select.options[idx].text = `${STATUS_MARK[pageStatus(item)]}${pageLabel(item)}  (PDF ${item.page})`;
+  }
+
+  function updateStatus() {
+    const status = pageStatus(data[currentIndex]);
+    statusChip.className = `status-chip ${status}`;
+    statusChip.innerText = STATUS_TEXT[status];
+    refreshPageOption(currentIndex);
+  }
+
   data.forEach((d, idx) => {
     let opt = document.createElement('option');
     opt.value = idx;
-    opt.innerText = `पृष्ठम् ${toDevanagariDigits(d.page)} (Page ${d.page})`;
     select.appendChild(opt);
+    refreshPageOption(idx);
+  });
+
+  function toggleSettings(forceOpen) {
+    const open = forceOpen !== undefined ? forceOpen : settingsMenu.hidden;
+    settingsMenu.hidden = !open;
+    settingsBtn.setAttribute('aria-expanded', String(open));
+  }
+  document.addEventListener('click', (e) => {
+    if (!settingsMenu.hidden && !settingsWrap.contains(e.target)) toggleSettings(false);
   });
 
   function switchPage(idx) {
@@ -1004,6 +1148,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     if (item.baseline === undefined) {
       item.baseline = item.sec1;
+      item.sec2Baseline = item.sec2;
     }
 
     pageImg.src = 'data:image/png;base64,' + item.img;
@@ -1011,9 +1156,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     sec2Editor.value = item.sec2;
     sec3Content.innerHTML = item.sec3_html;
 
-    const devPage = toDevanagariDigits(item.page);
-    currentPageHeading.innerText = `पृष्ठम् ${devPage} (Page ${item.page})`;
-    pageProgressPill.innerText = `पृष्ठम् ${toDevanagariDigits(currentIndex + 1)} / ${toDevanagariDigits(data.length)}`;
+    currentPageHeading.innerText = pageLabel(item);
+    if (saveResetTimer) { clearTimeout(saveResetTimer); saveResetTimer = null; }
+    resetSaveButton();
+    pagePdfNum.innerText = `PDF ${item.page}`;
+
+    // English front matter: Latin font, no padaccheda section
+    const isEnglish = item.lang === 'en';
+    textPane.classList.toggle('lang-en', isEnglish);
+    toggleSec2Btn.hidden = isEnglish;
+    sec1Label.innerText = isEnglish ? '१. मूलपाठः (Original Text — English)' : '१. मूलपाठः (Devanagari OCR Text)';
+    textPane.scrollTop = 0;
 
     prevBtn.disabled = (currentIndex <= 0);
     nextBtn.disabled = (currentIndex >= data.length - 1);
@@ -1089,6 +1242,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   function handleSec2Edit() {
     autoResize(sec2Editor);
     data[currentIndex].sec2 = sec2Editor.value;
+    updateStatus();
   }
 
   function revertCurrentPage() {
@@ -1100,42 +1254,155 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
   }
 
+  /* Real-Time Proof Marks: token-level diff of Section 1 against the original OCR */
+  let proofShowFull = false;
+  let proofCollapsed = false;
+
   function handleEdit() {
     autoResize(sec1Editor);
     const item = data[currentIndex];
     const currentText = sec1Editor.value;
     item.sec1 = currentText;
 
-    const baseWords = tokenize(item.baseline);
-    const curWords = tokenize(currentText);
-
-    let hasDifferences = false;
-    let renderedHtml = "";
-
-    curWords.forEach(w => {
-      if (w.trim().length > 0 && !baseWords.includes(w)) {
-        renderedHtml += `<span class="mark-edited">${escapeHtml(w)}</span>`;
-        hasDifferences = true;
-      } else {
-        renderedHtml += escapeHtml(w);
-      }
-    });
-
-    if (hasDifferences || currentText !== item.baseline) {
-      diffBox.style.display = 'block';
-      diffView.innerHTML = renderedHtml;
-      diffIndicator.innerHTML = '<span style="color: #b45309; font-weight: 700;">● संशोधितः (Edited)</span>';
-      revertBtn.style.display = 'inline-flex';
-    } else {
-      diffBox.style.display = 'none';
-      diffView.innerHTML = '';
-      diffIndicator.innerHTML = '<span style="color: #16a34a;">✔ अविकृतः (Matches Scan)</span>';
-      revertBtn.style.display = 'none';
-    }
+    const changed = currentText !== item.baseline;
+    revertBtn.style.display = changed ? 'inline-flex' : 'none';
+    proofPanel.hidden = !changed;
+    if (changed) renderProofMarks(diffTokens(tokenize(item.baseline), tokenize(currentText)));
+    updateStatus();
   }
 
   function tokenize(str) {
-    return str.split(/([\s।॥,.\-—]+)/);
+    return str.split(/([\s।॥,.\-—]+)/).filter(t => t.length > 0);
+  }
+
+  // Longest-common-subsequence diff over tokens; returns [op, token] with op in '=', '-', '+'
+  function diffTokens(a, b) {
+    let start = 0;
+    while (start < a.length && start < b.length && a[start] === b[start]) start++;
+    let endA = a.length, endB = b.length;
+    while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+
+    const ops = [];
+    for (let i = 0; i < start; i++) ops.push(['=', a[i]]);
+    const A = a.slice(start, endA), B = b.slice(start, endB);
+    const n = A.length, m = B.length;
+    if (n * m > 4000000) {
+      A.forEach(t => ops.push(['-', t]));
+      B.forEach(t => ops.push(['+', t]));
+    } else {
+      const w = m + 1;
+      const L = new Uint16Array((n + 1) * w);
+      for (let i = n - 1; i >= 0; i--) {
+        for (let j = m - 1; j >= 0; j--) {
+          L[i * w + j] = A[i] === B[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+        }
+      }
+      let i = 0, j = 0;
+      while (i < n && j < m) {
+        if (A[i] === B[j]) { ops.push(['=', A[i]]); i++; j++; }
+        else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) { ops.push(['-', A[i]]); i++; }
+        else { ops.push(['+', B[j]]); j++; }
+      }
+      while (i < n) ops.push(['-', A[i++]]);
+      while (j < m) ops.push(['+', B[j++]]);
+    }
+    for (let i = endA; i < a.length; i++) ops.push(['=', a[i]]);
+    return ops;
+  }
+
+  // Make whitespace-only insertions/deletions visible
+  function visibleToken(t) {
+    return t.trim() === '' ? t.replace(/\n/g, '↵').replace(/[^\S\n]+/g, '␣') : t;
+  }
+
+  function contextText(ops, from, step) {
+    const parts = [];
+    for (let k = from; k >= 0 && k < ops.length && parts.length < 3; k += step) {
+      if (ops[k][0] === '-') continue;
+      if (ops[k][0] === '+') break;
+      parts.push(ops[k][1]);
+    }
+    if (step < 0) parts.reverse();
+    return parts.join('').replace(/\s+/g, ' ');
+  }
+
+  function renderProofMarks(ops) {
+    // Group consecutive changed tokens into hunks, tracking their offsets in the edited text
+    const hunks = [];
+    let pos = 0, hunk = null;
+    ops.forEach(([op, tok], k) => {
+      if (op === '=') { hunk = null; pos += tok.length; return; }
+      if (!hunk) { hunk = { first: k, last: k, del: '', ins: '', start: pos, end: pos }; hunks.push(hunk); }
+      hunk.last = k;
+      if (op === '-') hunk.del += tok;
+      else { hunk.ins += tok; pos += tok.length; hunk.end = pos; }
+    });
+
+    const n = hunks.length;
+    proofTitle.innerText = `दृष्टं शोधनम् — ${toDevanagariDigits(n)} परिवर्तन${n === 1 ? 'म्' : 'ानि'} (${n} change${n === 1 ? '' : 's'})`;
+
+    proofList.innerHTML = hunks.map((h, idx) => {
+      const before = escapeHtml(contextText(ops, h.first - 1, -1));
+      const after = escapeHtml(contextText(ops, h.last + 1, 1));
+      const del = h.del ? `<del>${escapeHtml(visibleToken(h.del))}</del>` : '';
+      const ins = h.ins ? `<ins>${escapeHtml(visibleToken(h.ins))}</ins>` : '';
+      return `<button class="change-item" onclick="jumpToChange(${h.start}, ${h.end})" title="पाठे दर्शयतु (Show in editor)"><span class="ctx">…${before}</span>${del}${del && ins ? ' → ' : ''}${ins}<span class="ctx">${after}…</span></button>`;
+    }).join('');
+
+    proofFull.innerHTML = ops.map(([op, tok]) => {
+      if (op === '=') return escapeHtml(tok);
+      return op === '-' ? `<del>${escapeHtml(visibleToken(tok))}</del>` : `<ins>${escapeHtml(tok)}</ins>`;
+    }).join('');
+
+    applyProofView();
+  }
+
+  function applyProofView() {
+    proofList.hidden = proofCollapsed || proofShowFull;
+    proofFull.hidden = proofCollapsed || !proofShowFull;
+    proofModeBtn.hidden = proofCollapsed;
+    proofModeBtn.innerText = proofShowFull ? 'सूच्यां पश्यतु (Show as list)' : 'पूर्णपाठे पश्यतु (Show in full text)';
+    proofCollapseBtn.innerText = proofCollapsed ? '▴' : '▾';
+  }
+
+  function toggleProofMode() {
+    proofShowFull = !proofShowFull;
+    applyProofView();
+    if (proofShowFull) {
+      const firstMark = proofFull.querySelector('ins, del');
+      if (firstMark) proofFull.scrollTop = Math.max(0, firstMark.offsetTop - proofFull.offsetTop - 40);
+    }
+  }
+  function toggleProofCollapse() { proofCollapsed = !proofCollapsed; applyProofView(); }
+
+  // Measure the vertical offset of a character position inside the auto-sized textarea
+  let caretMirror = null;
+  function caretOffsetTop(textarea, pos) {
+    if (!caretMirror) {
+      caretMirror = document.createElement('div');
+      caretMirror.style.cssText = 'position:absolute; visibility:hidden; top:0; left:-9999px; white-space:pre-wrap; overflow-wrap:break-word;';
+      document.body.appendChild(caretMirror);
+    }
+    const cs = getComputedStyle(textarea);
+    ['fontFamily', 'fontSize', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+     'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing', 'letterSpacing']
+      .forEach(p => { caretMirror.style[p] = cs[p]; });
+    caretMirror.style.borderStyle = 'solid';
+    caretMirror.style.width = textarea.offsetWidth + 'px';
+    caretMirror.textContent = textarea.value.slice(0, pos);
+    const marker = document.createElement('span');
+    marker.textContent = '\u200b';
+    caretMirror.appendChild(marker);
+    return marker.offsetTop;
+  }
+
+  function jumpToChange(start, end) {
+    sec1Editor.focus({ preventScroll: true });
+    sec1Editor.setSelectionRange(start, Math.max(start, end));
+    const paneRect = textPane.getBoundingClientRect();
+    const editorTop = sec1Editor.getBoundingClientRect().top - paneRect.top + textPane.scrollTop;
+    const target = editorTop + caretOffsetTop(sec1Editor, start) - paneRect.height / 3;
+    textPane.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
   }
 
   function escapeHtml(text) {
@@ -1486,6 +1753,12 @@ ${bodyHtml}
     showToast(`⬇ ${filename} अवतारितम् (Downloaded .md)`);
   }
 
+  let saveResetTimer = null;
+  function resetSaveButton() {
+    saveBtn.innerText = '💾 रक्षतु (Save)';
+    saveBtn.style.background = '';
+  }
+
   async function saveVerifiedDirect() {
     const item = data[currentIndex];
     item.sec1 = sec1Editor.value;
@@ -1505,23 +1778,26 @@ ${bodyHtml}
         })
       });
 
+      item.savedSnapshot = outContent;
+      updateStatus();
       saveBtn.innerText = '✔ रक्षितम् (Saved!)';
       saveBtn.style.background = '#059669';
-      showToast(`✔ पृष्ठम् ${toDevanagariDigits(item.page)} सुरक्षितम् (Saved to Drive)`);
-      setTimeout(() => {
-        saveBtn.innerText = '💾 रक्षतु (Save)';
-        saveBtn.style.background = '#16a34a';
-      }, 2000);
+      showToast(`✔ ${pageLabel(item)} सुरक्षितम् (Saved to Drive)`);
+      saveResetTimer = setTimeout(resetSaveButton, 2000);
     } catch (err) {
       alert("रक्षणे दोषः जातः (Save failed): " + err.message);
-      saveBtn.innerText = '💾 रक्षतु (Save)';
-      saveBtn.style.background = '#16a34a';
+      resetSaveButton();
     }
   }
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && allPagesModal.classList.contains('open')) {
       closeAllPagesModal();
+      return;
+    }
+    if (e.key === 'Escape' && !settingsMenu.hidden) {
+      toggleSettings(false);
+      settingsBtn.focus();
       return;
     }
     if (e.altKey && e.key === 'ArrowLeft') prevPage();
@@ -1604,6 +1880,7 @@ def generate_viewer():
 
         pages_data.append({
             "page": p_num,
+            **page_metadata(int(p_num)),
             "img": img_b64,
             "sec1": sec1,
             "sec2": sec2,
