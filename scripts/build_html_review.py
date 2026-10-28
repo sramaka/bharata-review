@@ -143,7 +143,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः — शोधनपुटम्</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Sanskrit:ital@0;1&family=Noto+Serif+Devanagari:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Sanskrit:ital@0;1&family=Martel:wght@400;600;800&family=Sahitya:wght@400;700&family=Noto+Serif+Devanagari:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Serif:ital,wght@0,400;0,600;1,400&display=swap">
 <style>
   :root {
     --font-family: 'Tiro Devanagari Sanskrit', 'Noto Serif Devanagari', serif;
@@ -193,9 +193,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     gap: 12px;
   }
   .app-title {
-    font-family: 'Noto Serif Devanagari', serif;
-    font-size: 16px;
-    font-weight: 700;
+    font-family: 'Tiro Devanagari Sanskrit', 'Noto Serif Devanagari', serif;
+    font-size: 19px;
+    font-weight: 400;
     color: var(--accent-gold);
     letter-spacing: 0.3px;
     white-space: nowrap;
@@ -476,9 +476,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     display: flex;
     align-items: center;
     gap: 10px;
-    font-family: 'Noto Serif Devanagari', serif;
-    font-size: 1.05rem;
-    font-weight: 700;
+    font-family: var(--font-family);
+    font-size: 1.2rem;
+    font-weight: 400;
     color: #7c2d12;
   }
   .page-pdf-num {
@@ -567,7 +567,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
   }
 
-  .lang-en .sanskrit-editor { font-family: 'Noto Serif', Georgia, serif; }
+  .lang-en .sanskrit-editor { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; }
 
   /* Real-Time Proof Marks: sticky panel pinned to the bottom of the text pane */
   .proof-panel {
@@ -645,7 +645,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     margin-top: 6px;
     font-size: 0.92em;
     line-height: 1.65;
-    font-family: 'Noto Serif Devanagari', system-ui, sans-serif;
+    font-family: var(--font-family);
   }
   .scholarly-table th, .scholarly-table td {
     border: 1px solid #cbd5e1;
@@ -816,11 +816,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     background: #fafaf9;
     padding: 12px 20px;
     margin-bottom: 24px;
-    font-family: 'Noto Serif Devanagari', serif;
+    font-family: var(--font-family);
     line-height: 1.6;
   }
   .book-toc-title {
-    font-size: 0.9em;
+    font-weight: 400;
+    font-size: 1em;
     color: #7c2d12;
     margin: 0 0 8px 0;
   }
@@ -829,23 +830,24 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .toc-table a { color: #1e3a8a; text-decoration: none; }
   .toc-table a:hover { text-decoration: underline; }
   .toc-pages { text-align: right; white-space: nowrap; color: #78716c; }
-  .toc-part td { font-weight: 700; color: #7c2d12; padding-top: 8px; }
+  .toc-part td { color: #7c2d12; padding-top: 8px; }
   .book-part-heading, .book-section-heading {
-    font-family: 'Noto Serif Devanagari', serif;
+    font-family: var(--font-family);
+    font-weight: 400;
     text-align: center;
     color: #7c2d12;
   }
-  .book-part-heading { font-size: 1.25em; margin: 36px 0 8px 0; }
+  .book-part-heading { font-size: 1.45em; margin: 36px 0 8px 0; }
   .book-section-heading {
-    font-size: 1.1em;
+    font-size: 1.3em;
     margin: 32px 0 16px 0;
     padding-bottom: 6px;
     border-bottom: 1px solid #fed7aa;
   }
   .book-page-divider {
-    font-family: 'Noto Serif Devanagari', system-ui, sans-serif;
-    font-size: 0.78em;
-    font-weight: 700;
+    font-family: var(--font-family);
+    font-size: 0.8em;
+    font-weight: 400;
     color: #9a3412;
     background: #fff7ed;
     border: 1px solid #fed7aa;
@@ -854,12 +856,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     border-radius: 999px;
     margin: 14px 0 8px 0;
   }
-  .book-en { font-family: 'Noto Serif', Georgia, serif; line-height: 1.6; }
+  .book-en { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; line-height: 1.6; }
   .book-en p { text-align: left; }
   .book-sec-heading {
-    font-family: 'Noto Serif Devanagari', system-ui, sans-serif;
-    font-size: 0.85em;
-    font-weight: 700;
+    font-family: var(--font-family);
+    font-size: 0.9em;
+    font-weight: 400;
     color: #1e3a8a;
     border-bottom: 1px solid #cbd5e1;
     padding-bottom: 4px;
@@ -938,7 +940,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div id="settingsMenu" class="settings-menu" hidden>
         <div class="menu-label">लिपिः (Font)</div>
         <select id="fontSelect" onchange="changeFont(this.value)">
-          <option value="'Tiro Devanagari Sanskrit', serif">Tiro Devanagari</option>
+          <option value="'Tiro Devanagari Sanskrit', serif">Tiro Devanagari Sanskrit</option>
+          <option value="Martel, serif">Martel</option>
+          <option value="Sahitya, serif">Sahitya</option>
           <option value="'Noto Serif Devanagari', serif">Noto Serif</option>
           <option value="Siddhanta, serif">Siddhanta</option>
         </select>
@@ -1525,6 +1529,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
   }
 
+  // The text font chosen in the settings menu, with fallbacks, for copied and exported documents
+  function textFontStack() {
+    const chosen = getComputedStyle(document.documentElement).getPropertyValue('--font-family').trim()
+      .replace(/,\s*serif\s*$/, '');
+    return `${chosen}, 'Tiro Devanagari Sanskrit', 'Noto Serif Devanagari', 'Nirmala UI', 'Mangal', serif`.replace(/"/g, "'");
+  }
+
   function copySectionText(secKey) {
     const item = data[currentIndex];
     item.sec1 = sec1Editor.value;
@@ -1532,10 +1543,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const devNum = toDevanagariDigits(item.page);
 
     if (secKey === 'sec1') {
-      const html = `<div style="font-family: 'Noto Serif Devanagari', 'Tiro Devanagari Sanskrit', serif; font-size: 16pt; line-height: 1.9;">${escapeHtml(item.sec1).replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>')}</div>`;
+      const html = `<div style="font-family: ${textFontStack()}; font-size: 16pt; line-height: 1.9;">${escapeHtml(item.sec1).replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>')}</div>`;
       copyToClipboard(item.sec1, `✔ पृष्ठम् ${devNum} — मूलपाठः प्रतिकृतः (Copied Sanskrit Text!)`, html);
     } else if (secKey === 'sec2') {
-      const html = `<div style="font-family: 'Noto Serif Devanagari', 'Tiro Devanagari Sanskrit', serif; font-size: 15pt; line-height: 1.9;">${escapeHtml(item.sec2).replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>')}</div>`;
+      const html = `<div style="font-family: ${textFontStack()}; font-size: 15pt; line-height: 1.9;">${escapeHtml(item.sec2).replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>')}</div>`;
       copyToClipboard(item.sec2, `✔ पृष्ठम् ${devNum} — पदच्छेदः प्रतिकृतः (Copied Padaccheda!)`, html);
     } else if (secKey === 'sec3') {
       copyToClipboard(item.sec3_md || '', `✔ पृष्ठम् ${devNum} — टिप्पणी प्रतिकृता (Copied Apparatus!)`, item.sec3_html || null);
@@ -1559,7 +1570,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const plainText = plainParts.join('\n\n');
 
     const htmlParts = [
-      `<div style="font-family: 'Noto Serif Devanagari', 'Tiro Devanagari Sanskrit', serif; font-size: 15pt; line-height: 1.9; color: #111;">`,
+      `<div style="font-family: ${textFontStack()}; font-size: 15pt; line-height: 1.9; color: #111;">`,
       `<h2 style="color: #7c2d12; border-bottom: 1px solid #fed7aa;">पृष्ठम् ${devNum}</h2>`,
       `<h3 style="color: #9a3412;">१. मूलपाठः</h3>`,
       `<p style="white-space: pre-wrap;">${escapeHtml((item.sec1 || '').trim())}</p>`,
@@ -1805,7 +1816,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   function copyCompiledBook() {
     const compiled = buildCompiledBookData();
-    const richHtml = `<div style="font-family: 'Noto Serif Devanagari', 'Tiro Devanagari Sanskrit', serif; font-size: 15pt; line-height: 1.9; color: #111;">${compiled.html}</div>`;
+    const richHtml = `<div style="font-family: ${textFontStack()}; font-size: 15pt; line-height: 1.9; color: #111;">${compiled.html}</div>`;
     copyToClipboard(compiled.plain, `✔ सम्पूर्णः पाठः प्रतिकृतः — Word / Docs मध्ये स्थापयतु (Copied! Paste anywhere)`, richHtml);
   }
 
@@ -1823,17 +1834,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <title>${title}</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Devanagari:wght@400;600;700&family=Tiro+Devanagari+Sanskrit&family=Noto+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Sanskrit:ital@0;1&family=Martel:wght@400;600;800&family=Sahitya:wght@400;700&family=Noto+Serif+Devanagari:wght@400;600;700&family=Noto+Serif:ital,wght@0,400;0,600;1,400&display=swap">
 <style>
   @page {
     size: A4;
     margin: 2.2cm;
-    @bottom-center { content: counter(page); font-size: 10pt; color: #666666; }
+    @bottom-center { content: counter(page); font-family: 'Noto Serif', Georgia, serif; font-size: 10pt; color: #666666; }
   }
   @page :first { @bottom-center { content: none; } }
   body {
-    font-family: 'Noto Serif Devanagari', 'Tiro Devanagari Sanskrit', 'Siddhanta', serif;
-    font-size: 15pt;
+    font-family: ${textFontStack()};
+    font-size: 15.5pt;
     line-height: 1.95;
     color: #111827;
     max-width: 780px;
@@ -1845,24 +1856,25 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .title-page p { text-align: center; white-space: normal; }
   .tp-shri { font-size: 16pt; }
   .tp-author { font-size: 17pt; margin-top: 48pt; }
-  .tp-title { font-size: 36pt; color: #7c2d12; margin: 6pt 0 36pt 0; }
-  .tp-latin { font-family: 'Noto Serif', Georgia, serif; font-size: 13pt; line-height: 1.5; }
-  .tp-meta { font-family: 'Noto Serif', Georgia, serif; font-size: 10.5pt; line-height: 1.6; color: #555555; margin-top: 72pt; }
-  .book-toc-title { font-size: 20pt; color: #7c2d12; text-align: center; margin: 0 0 18pt 0; }
+  h1, h2, h3 { font-weight: normal; }
+  .tp-title { font-size: 40pt; color: #7c2d12; margin: 6pt 0 36pt 0; }
+  .tp-latin { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 13pt; line-height: 1.5; }
+  .tp-meta { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 10.5pt; line-height: 1.6; color: #555555; margin-top: 72pt; }
+  .book-toc-title { font-size: 22pt; color: #7c2d12; text-align: center; margin: 0 0 18pt 0; }
   table.toc-table { border-collapse: collapse; width: 100%; margin: 0; font-size: 14pt; }
   table.toc-table td { border: none; padding: 3pt 0; }
   table.toc-table a { color: #111827; text-decoration: none; }
   .toc-pages { text-align: right; white-space: nowrap; color: #555555; }
-  .toc-part td { font-weight: bold; color: #7c2d12; padding-top: 12pt; }
+  .toc-part td { color: #7c2d12; padding-top: 12pt; }
   h1.book-part-heading {
-    font-size: 26pt;
+    font-size: 30pt;
     color: #7c2d12;
     text-align: center;
     padding-top: 30%;
     page-break-before: always;
   }
   h2.book-section-heading {
-    font-size: 20pt;
+    font-size: 24pt;
     color: #7c2d12;
     text-align: center;
     margin: 0 0 18pt 0;
@@ -1872,8 +1884,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     page-break-after: avoid;
   }
   h3.book-page-divider {
-    font-size: 11pt;
-    font-weight: bold;
+    font-size: 12pt;
     color: #9a3412;
     margin-top: 18pt;
     margin-bottom: 6pt;
@@ -1881,8 +1892,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     page-break-after: avoid;
   }
   .book-sec-heading {
-    font-size: 13pt;
-    font-weight: bold;
+    font-size: 13.5pt;
     color: #1e3a8a;
     margin-top: 14pt;
     margin-bottom: 6pt;
@@ -1900,7 +1910,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     vertical-align: top;
   }
   th { background: #f1f5f9; font-weight: bold; }
-  .book-en { font-family: 'Noto Serif', Georgia, serif; line-height: 1.6; }
+  .book-en { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; line-height: 1.6; }
   .book-en p { text-align: left; }
 </style>
 </head>
