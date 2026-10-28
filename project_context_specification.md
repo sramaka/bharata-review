@@ -94,6 +94,13 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
     - When front matter is included, part headings (`प्रस्तावनादि` / `मूलग्रन्थः`) on their own pages.
     - Each section starting on a new page under a heading.
     - Page numbers in the PDF footer.
+  - **Source + padaccheda layout:** when both Section 1 and Section 2 are included, the padaccheda is set under each passage of the source text, not page by page. It is smaller, muted blue, indented, with a thin rule at the left.
+    - Paragraphs are paired by position on each page. A page whose paragraph counts differ is kept as one pair.
+    - Paragraphs split across a page break are joined in both texts. In the padaccheda, a page that continues a split word restates its head in parentheses (e.g. `(पाण्डुः इति ए)व`, `(इद)म्`), and the builder uses this to rejoin the word.
+    - Long prose paragraphs are cut into chunks of a few sentences (about 320 characters) at the same danda in both texts. Every paragraph pair has matching dandas; any that don't are kept whole.
+    - Verses and short lines are centred, prose gets a first-line indent, and a padaccheda identical to its source (e.g. `श्रीः`) is omitted.
+    - A पठनसङ्केतः (How to read) key explains the two styles.
+    - With page numbers off, editorial notes are gathered at the end of each section, labelled by page. With page numbers on, they follow each page.
   - Headings are real H1 (parts) / H2 (sections) / H3 (page markers, when page numbers are on), so Word's Navigation Pane and PDF links work. The in-app preview shows the same table of contents and headings. Exported files are named `bharata_sangraha_<first>_to_<last>` after the PDF pages included.
   - `Esc` closes the modal.
 - **Zero-Prompt Persistence:** Clicking **💾 रक्षतु (Save)** POSTs `{page, content}` (the full 3-section Markdown) to the Google Apps Script Web App URL as `text/plain`, persisting `page_XXX.md` to `bharata_verified_pages/` in Google Drive. The button then shows `✔ रक्षितम्` along with a toast.

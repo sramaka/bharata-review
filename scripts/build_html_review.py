@@ -858,14 +858,29 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .book-en { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; line-height: 1.6; }
   .book-en p { text-align: left; }
-  .book-sec-heading {
+  .book-preview-sheet .pada-para { text-align: left; }
+  .reading-key {
+    border: 1px solid #e7e5e4;
+    border-radius: 8px;
+    padding: 10px 18px 2px 18px;
+    margin-bottom: 24px;
+    font-size: 0.85em;
+  }
+  .reading-key-title { color: #7c2d12; margin-bottom: 6px; }
+  .key-gloss { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 0.85em; color: #57534e; }
+  .book-notes-heading {
     font-family: var(--font-family);
-    font-size: 0.9em;
     font-weight: 400;
-    color: #1e3a8a;
-    border-bottom: 1px solid #cbd5e1;
-    padding-bottom: 4px;
-    margin: 16px 0 8px 0;
+    font-size: 1em;
+    color: #7c2d12;
+    margin: 32px 0 8px 0;
+    padding-top: 12px;
+    border-top: 1px solid #e7e5e4;
+  }
+  .book-notes-page {
+    font-size: 0.75em;
+    color: #9a3412;
+    margin: 12px 0 4px 0;
   }
 
   /* Toast Notification */
@@ -1607,21 +1622,89 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     };
   }
 
-  function mergeContinuousTexts(pageTexts) {
-    if (pageTexts.length === 0) return '';
-    let result = pageTexts[0].trim();
-    for (let i = 1; i < pageTexts.length; i++) {
-      let nextText = pageTexts[i].trim();
-      if (!nextText) continue;
-      // If previous page ends with a hyphenated word (e.g. पाण्डुरित्ये-), join directly with next page's first word
-      if (/[-‐‑–—]\s*$/.test(result)) {
-        result = result.replace(/[-‐‑–—]\s*$/, '') + nextText;
-      } else {
-        result = result + ' ' + nextText;
-      }
-    }
-    return result;
+  function splitParagraphs(text) {
+    return (text || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
   }
+
+  // Source text: a word hyphenated at the page end (e.g. पाण्डुरित्ये-) joins the next page's first word
+  function joinSourceAcrossPages(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    return /[-‐‑–—]\s*$/.test(a) ? a.replace(/[-‐‑–—]\s*$/, '') + b : a + ' ' + b;
+  }
+
+  // Padaccheda: a page that continues a split word restates its head in parentheses, e.g.
+  // "… सः अपि पाण्डुः इति ए-" + "(पाण्डुः इति ए)व अभ्यधायि" → "… सः अपि पाण्डुः इति एव अभ्यधायि".
+  // Without a restated head, a trailing hyphen is a compound joint and the pages join directly.
+  function joinPadacchedaAcrossPages(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    if (!/-\s*$/.test(a)) return a + ' ' + b;
+    const m = b.match(/^\(([^)]*)\)/);
+    if (!m) return a.replace(/\s+$/, '') + b;
+    const head = m[1].trim();
+    const k = head.split(/\s+/).length;
+    const prefix = a.replace(new RegExp(`(\\s*\\S+){${k}}\\s*$`), '');
+    return (prefix ? prefix + ' ' : '') + head + b.slice(m[0].length);
+  }
+
+  // Paragraph pairs [source, padaccheda] for one page; if the paragraph counts differ the
+  // whole page becomes a single pair so nothing is mismatched
+  function pageParagraphPairs(item) {
+    const src = splitParagraphs(item.sec1), pada = splitParagraphs(item.sec2);
+    if (src.length === pada.length) return src.map((s, i) => [s, pada[i]]);
+    return [[src.join('\n\n'), pada.join('\n\n')]];
+  }
+
+  // Escape for HTML and keep each danda on the line of the word before it
+  function typesetHtml(text) {
+    return escapeHtml(text).replace(/ +([।॥])/g, ' $1');
+  }
+
+  function isVerseOrShort(text) {
+    const t = (text || '').trim();
+    return t.includes('\n') || t.length < 40;
+  }
+
+  function normalizeSpace(text) {
+    return (text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  // Sentences ending in a danda (with any closing quote), plus any unterminated tail
+  function splitSentences(text) {
+    return (text || '').match(/[^।॥]*[।॥]+[’'"”]*\s*|[^।॥]+$/g) || [];
+  }
+
+  // Cut a long source/padaccheda paragraph pair into aligned chunks of a few sentences each.
+  // Source and padaccheda have the same dandas, so chunk boundaries fall at the same sentence;
+  // if the counts ever differ the pair is kept whole.
+  const CHUNK_TARGET_CHARS = 320;
+  function chunkParagraphPair(src, pada) {
+    const ss = splitSentences(src), ps = splitSentences(pada);
+    if (!pada || ss.length !== ps.length || ss.length < 2) return [[src, pada]];
+    const chunks = [];
+    let cs = '', cp = '';
+    ss.forEach((sentence, i) => {
+      cs += sentence; cp += ps[i];
+      const isLast = i === ss.length - 1;
+      if (isLast || cs.trim().length >= CHUNK_TARGET_CHARS) {
+        chunks.push([cs.trim(), cp.trim()]);
+        cs = ''; cp = '';
+      }
+    });
+    // Fold a very short final chunk into the previous one
+    if (chunks.length > 1 && chunks[chunks.length - 1][0].length < CHUNK_TARGET_CHARS / 3) {
+      const [ls, lp] = chunks.pop();
+      const prev = chunks[chunks.length - 1];
+      prev[0] += ' ' + ls; prev[1] += ' ' + lp;
+    }
+    return chunks;
+  }
+
+  // Inline styles so the layout survives copy-paste into Word / Docs as well as export
+  const SRC_PARA_STYLE = 'margin: 0 0 0.3em 0;';
+  const PADA_CENTRED_STYLE = 'font-size: 0.84em; line-height: 1.75; color: #3b4a6b; text-align: center; text-indent: 0; margin: 0 0 0.9em 0;';
+  const PADA_PARA_STYLE = 'font-size: 0.84em; line-height: 1.75; color: #3b4a6b; text-align: left; text-indent: 0; margin: 0 0 0.9em 1.2em; padding-left: 0.8em; border-left: 2px solid #c7d2fe;';
 
   // Pages included in the compiled book: front matter only when asked for
   function compiledPages(opts) {
@@ -1728,64 +1811,81 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   function compileSectionGroup(pages, opts) {
-    // Continuous seamless mode when only Mulapatha (or Mulapatha without page headers) is selected with Join Split Words
-    if (opts.mergeHyphens && !opts.showPageNums && opts.sec1 && !opts.sec2 && !opts.sec3) {
-      const mergedSec1 = mergeContinuousTexts(pages.map(d => d.sec1 || ''));
-      const paragraphs = mergedSec1.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-      const htmlParagraphs = paragraphs.map(p => `<p>${escapeHtml(p)}</p>`).join('\n');
-      return {
-        plain: paragraphs.join('\n\n') + '\n',
-        html: htmlParagraphs
-      };
-    }
+    // Continuous flow (paragraphs joined across page breaks) unless page numbers are shown or joining is off
+    const continuous = opts.mergeHyphens && !opts.showPageNums;
+    const plainBlocks = [], htmlBlocks = [];
 
-    let plainBlocks = [];
-    let htmlBlocks = [];
-    const multiSection = (opts.sec1 ? 1 : 0) + (opts.sec2 ? 1 : 0) + (opts.sec3 ? 1 : 0) > 1;
-
-    for (let i = 0; i < pages.length; i++) {
-      const item = pages[i];
-      let pagePlain = [];
-      let pageHtml = [];
-
-      if (opts.showPageNums || multiSection) {
-        pagePlain.push(`[${pageLabel(item)}]`);
-        pageHtml.push(`<h3 class="book-page-divider">${escapeHtml(pageLabel(item))} (PDF ${item.page})</h3>`);
-      }
-
-      if (opts.sec1) {
-        let s1 = (item.sec1 || '').trim();
-        if (multiSection) {
-          pagePlain.push(`१. मूलपाठः\n${s1}`);
-          pageHtml.push(`<div class="book-sec-heading">१. मूलपाठः</div>`);
-        } else {
-          pagePlain.push(s1);
+    const renderPairs = pairs => {
+      pairs.forEach(([s, d]) => {
+        const html = [], plain = [];
+        const chunks = (opts.sec1 && opts.sec2) ? chunkParagraphPair(s, d) : [[s, d]];
+        // Verses and short lines (invocations, headings) are centred as in the printed book;
+        // prose paragraphs get a first-line indent
+        const centred = isVerseOrShort(s);
+        chunks.forEach(([cs, cd], ci) => {
+          if (opts.sec1) {
+            splitParagraphs(cs).forEach(p => {
+              const layout = centred ? 'text-align: center; ' : (ci === 0 ? 'text-indent: 1.5em; ' : '');
+              html.push(`<p class="src-para" style="${layout}${opts.sec2 ? SRC_PARA_STYLE : ''}">${typesetHtml(p)}</p>`);
+              plain.push(p);
+            });
+          }
+          // Skip the padaccheda where it repeats the source verbatim (e.g. श्रीः)
+          if (opts.sec2 && !(opts.sec1 && normalizeSpace(cd) === normalizeSpace(cs))) {
+            splitParagraphs(cd).forEach(p => {
+              const style = centred ? PADA_CENTRED_STYLE : PADA_PARA_STYLE;
+              html.push(opts.sec1 ? `<p class="pada-para" style="${style}">${typesetHtml(p)}</p>` : `<p style="${centred ? 'text-align: center;' : ''}">${typesetHtml(p)}</p>`);
+              plain.push(opts.sec1 ? p.split('\n').map(line => '    ' + line).join('\n') : p);
+            });
+          }
+        });
+        if (html.length) {
+          htmlBlocks.push(`<div class="para-pair" style="margin-bottom: 1.6em;">${html.join('\n')}</div>`);
+          plainBlocks.push(plain.join('\n'));
         }
-        const paras = s1.split(/\n\s*\n/).map(p => `<p>${escapeHtml(p.trim())}</p>`).join('\n');
-        pageHtml.push(paras);
-      }
+      });
+    };
 
-      if (opts.sec2) {
-        let s2 = (item.sec2 || '').trim();
-        if (multiSection || opts.sec1) {
-          pagePlain.push(`२. पदच्छेदसहितः पाठः\n${s2}`);
-          pageHtml.push(`<div class="book-sec-heading">२. पदच्छेदसहितः पाठः</div>`);
-        } else {
-          pagePlain.push(s2);
-        }
-        const paras2 = s2.split(/\n\s*\n/).map(p => `<p>${escapeHtml(p.trim())}</p>`).join('\n');
-        pageHtml.push(paras2);
-      }
+    const notesTable = item => (item.sec3_md || '').trim() ? (item.sec3_html || '') : '';
 
+    if (continuous) {
+      if (opts.sec1 || opts.sec2) {
+        const pairs = [];
+        pages.forEach(item => {
+          const pagePairs = pageParagraphPairs(item);
+          if (pairs.length && pagePairs.length) {
+            const last = pairs[pairs.length - 1], first = pagePairs.shift();
+            last[0] = joinSourceAcrossPages(last[0], first[0]);
+            last[1] = joinPadacchedaAcrossPages(last[1], first[1]);
+          }
+          pairs.push(...pagePairs);
+        });
+        renderPairs(pairs);
+      }
+      // Editorial notes gathered at the end of the section, labelled by page
       if (opts.sec3) {
-        let s3 = (item.sec3_md || '').trim();
-        pagePlain.push(`३. सम्पादनटिप्पण्यः\n${s3}`);
-        pageHtml.push(`<div class="book-sec-heading">३. सम्पादनटिप्पण्यः</div>`);
-        pageHtml.push(item.sec3_html || '');
+        const noted = pages.filter(notesTable);
+        if (noted.length) {
+          htmlBlocks.push(`<h3 class="book-notes-heading">सम्पादनटिप्पण्यः (Editorial Notes)</h3>`);
+          plainBlocks.push('सम्पादनटिप्पण्यः (Editorial Notes)');
+          noted.forEach(item => {
+            htmlBlocks.push(`<div class="book-notes-page">${escapeHtml(pageLabel(item))} (PDF ${item.page})</div>\n${notesTable(item)}`);
+            plainBlocks.push(`[${pageLabel(item)}]\n${item.sec3_md.trim()}`);
+          });
+        }
       }
-
-      plainBlocks.push(pagePlain.join('\n\n'));
-      htmlBlocks.push(pageHtml.join('\n'));
+    } else {
+      pages.forEach(item => {
+        if (opts.showPageNums) {
+          plainBlocks.push(`[${pageLabel(item)}]`);
+          htmlBlocks.push(`<h3 class="book-page-divider">${escapeHtml(pageLabel(item))} (PDF ${item.page})</h3>`);
+        }
+        if (opts.sec1 || opts.sec2) renderPairs(pageParagraphPairs(item));
+        if (opts.sec3 && notesTable(item)) {
+          htmlBlocks.push(`<div class="book-notes-page">सम्पादनटिप्पण्यः</div>\n${notesTable(item)}`);
+          plainBlocks.push(`सम्पादनटिप्पण्यः\n${item.sec3_md.trim()}`);
+        }
+      });
     }
 
     return {
@@ -1794,9 +1894,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     };
   }
 
+  // Key to the two text styles, shown when source and padaccheda are interleaved
+  function buildReadingKeyHtml(opts) {
+    if (!(opts.sec1 && opts.sec2)) return '';
+    return `<div class="reading-key">
+<div class="reading-key-title">पठनसङ्केतः (How to read)</div>
+<p class="src-para" style="${SRC_PARA_STYLE}">मूलपाठः — <span class="key-gloss">the original text, as printed.</span></p>
+<p class="pada-para" style="${PADA_PARA_STYLE}">पदच्छेदः — <span class="key-gloss">the same paragraph with sandhi and compounds separated, set beneath it.</span></p>
+</div>`;
+  }
+
   function refreshCompiledView() {
     const compiled = buildCompiledBookData();
-    bookPreviewSheet.innerHTML = buildTocHtml(compiled.toc) + compiled.html;
+    bookPreviewSheet.innerHTML = buildTocHtml(compiled.toc) + buildReadingKeyHtml(getModalOptions()) + compiled.html;
   }
 
   function openAllPagesModal() {
@@ -1822,7 +1932,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   function buildExportDocumentHtml() {
     const compiled = buildCompiledBookData();
-    const body = buildTitlePageHtml(getModalOptions()) + '\n' + buildTocHtml(compiled.toc) + '\n' + compiled.html;
+    const opts = getModalOptions();
+    const body = [buildTitlePageHtml(opts), buildTocHtml(compiled.toc), buildReadingKeyHtml(opts), compiled.html].join('\n');
     return buildStandaloneDocumentHtml('श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः', body);
   }
 
@@ -1891,12 +2002,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     border-bottom: 1px solid #fed7aa;
     page-break-after: avoid;
   }
-  .book-sec-heading {
-    font-size: 13.5pt;
-    color: #1e3a8a;
-    margin-top: 14pt;
-    margin-bottom: 6pt;
+  .reading-key { border: 1px solid #e7e5e4; padding: 8pt 14pt 0 14pt; margin: 24pt 0 0 0; font-size: 13pt; }
+  .reading-key-title { color: #7c2d12; margin-bottom: 4pt; }
+  .key-gloss { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 10.5pt; color: #57534e; }
+  .para-pair { page-break-inside: auto; }
+  .src-para { page-break-after: avoid; }
+  h3.book-notes-heading {
+    font-size: 15pt;
+    color: #7c2d12;
+    margin: 28pt 0 6pt 0;
+    padding-top: 10pt;
+    border-top: 1px solid #e7e5e4;
+    page-break-after: avoid;
   }
+  .book-notes-page { font-size: 11pt; color: #9a3412; margin: 10pt 0 2pt 0; page-break-after: avoid; }
   table {
     width: 100%;
     border-collapse: collapse;
