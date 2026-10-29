@@ -11,6 +11,9 @@ RAW_DIR = "output/raw"
 
 # Deployed site: index.html at the repo root loads page scans from WEB_IMAGE_DIR on demand
 SITE_HTML = "index.html"
+
+# Words flagged for the scholar's review, keyed by PDF page ("016": [{section, match, suggest, kind, note}])
+REVIEW_FLAGS_JSON = "output/review_flags.json"
 WEB_IMAGE_DIR = "page_web"
 WEB_IMAGE_WIDTH = 1600
 WEB_JPEG_QUALITY = 80
@@ -568,6 +571,55 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   .lang-en .sanskrit-editor { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; }
+  .sanskrit-editor { overflow-wrap: break-word; }
+
+  /* Review flags: highlights drawn on a layer behind the transparent textarea */
+  .editor-wrap { position: relative; background: #ffffff; border-radius: 8px; }
+  .editor-wrap > textarea.sanskrit-editor { position: relative; z-index: 1; background: transparent; }
+  .flag-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    color: transparent;
+    pointer-events: none;
+    overflow: hidden;
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+  mark.flag { color: transparent; border-radius: 3px; padding: 0; text-decoration-skip-ink: none; text-underline-offset: 0.3em; }
+  mark.flag-ocr { background: rgba(239, 68, 68, 0.16); text-decoration: underline wavy #dc2626; }
+  mark.flag-print { background: rgba(245, 158, 11, 0.22); text-decoration: underline wavy #d97706; }
+  mark.flag-verify { background: rgba(59, 130, 246, 0.14); text-decoration: underline dotted #2563eb; text-decoration-thickness: 2px; }
+
+  .flag-panel { border-left: 4px solid #dc2626; }
+  .flag-legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12.5px; font-weight: 500; color: #57534e; }
+  .flag-legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .legend-ocr::before { background: #fca5a5; }
+  .legend-print::before { background: #fcd34d; }
+  .legend-verify::before { background: #93c5fd; }
+  .flag-list { display: flex; flex-direction: column; gap: 8px; }
+  .flag-item {
+    border: 1px solid #e7e5e4;
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 12px;
+    align-items: center;
+  }
+  .flag-item.resolved { opacity: 0.55; }
+  .flag-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .flag-kind { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+  .kind-ocr .flag-kind { background: #fee2e2; color: #991b1b; }
+  .kind-print .flag-kind { background: #fef3c7; color: #92400e; }
+  .kind-verify .flag-kind { background: #dbeafe; color: #1e40af; }
+  .flag-words { font-family: var(--font-family); font-size: 1.15em; }
+  .flag-match { color: #991b1b; }
+  .flag-suggest { color: #166534; }
+  .flag-where { font-size: 12px; color: #78716c; }
+  .flag-note { grid-column: 1 / 2; font-size: 13px; color: #44403c; line-height: 1.5; }
+  .flag-actions { grid-column: 2 / 3; grid-row: 1 / span 2; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .flag-done { font-size: 13px; color: #166534; font-weight: 600; }
 
   /* Real-Time Proof Marks: sticky panel pinned to the bottom of the text pane */
   .proof-panel {
@@ -1008,6 +1060,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <span id="statusChip" class="status-chip unreviewed"></span>
     </div>
 
+    <!-- Words flagged for review on this page -->
+    <div id="flagPanel" class="card-container flag-panel" hidden>
+      <div class="card-header" style="color: #991b1b; border-color: #fecaca;">
+        <span id="flagTitle">⚑ समीक्षणीयानि पदानि (Words to review)</span>
+        <span class="flag-legend">
+          <span class="legend-ocr">पाठभेदः (differs from scan)</span>
+          <span class="legend-print">मुद्रणदोषः? (possible misprint)</span>
+          <span class="legend-verify">परीक्षणीयम् (please verify)</span>
+        </span>
+      </div>
+      <div id="flagList" class="flag-list"></div>
+    </div>
+
     <!-- Section 1: Mulapatha -->
     <div class="card-container">
       <div class="card-header">
@@ -1017,7 +1082,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <button id="revertBtn" class="light-btn" style="display: none; color: #b91c1c; border-color: #fecaca;" onclick="revertCurrentPage()" title="मूलपाठं प्रत्यानयतु (Revert edits to original OCR)">↺ पूर्ववत् (Revert)</button>
         </div>
       </div>
-      <textarea id="sec1Editor" class="sanskrit-editor" spellcheck="false" oninput="handleEdit()"></textarea>
+      <div class="editor-wrap">
+        <div id="sec1Backdrop" class="sanskrit-editor flag-backdrop" aria-hidden="true"></div>
+        <textarea id="sec1Editor" class="sanskrit-editor" spellcheck="false" oninput="handleEdit()"></textarea>
+      </div>
     </div>
 
     <!-- Section 2: Padaccheda -->
@@ -1028,7 +1096,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <button class="light-btn" onclick="copySectionText('sec2')" title="Copy Padaccheda text">📋 प्रतिकुरुत (Copy)</button>
         </div>
       </div>
-      <textarea id="sec2Editor" class="sanskrit-editor" spellcheck="false" oninput="handleSec2Edit()"></textarea>
+      <div class="editor-wrap">
+        <div id="sec2Backdrop" class="sanskrit-editor flag-backdrop" aria-hidden="true"></div>
+        <textarea id="sec2Editor" class="sanskrit-editor" spellcheck="false" oninput="handleSec2Edit()"></textarea>
+      </div>
     </div>
 
     <!-- Section 3: Apparatus -->
@@ -1128,6 +1199,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   const prevBtn = document.getElementById('prevBtn');
   const nextBtn = document.getElementById('nextBtn');
   const currentPageHeading = document.getElementById('currentPageHeading');
+  const sec1Backdrop = document.getElementById('sec1Backdrop');
+  const sec2Backdrop = document.getElementById('sec2Backdrop');
+  const flagPanel = document.getElementById('flagPanel');
+  const flagTitle = document.getElementById('flagTitle');
+  const flagList = document.getElementById('flagList');
   const pagePdfNum = document.getElementById('pagePdfNum');
   const statusChip = document.getElementById('statusChip');
   const textPane = document.getElementById('textPane');
@@ -1201,7 +1277,101 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   function refreshPageOption(idx) {
     const item = data[idx];
-    select.options[idx].text = `${STATUS_MARK[pageStatus(item)]}${pageLabel(item)}  (PDF ${item.page})`;
+    const open = openFlagCount(item);
+    select.options[idx].text = `${STATUS_MARK[pageStatus(item)]}${open ? `⚑${toDevanagariDigits(open)} ` : ''}${pageLabel(item)}  (PDF ${item.page})`;
+  }
+
+  /* ---------- Review flags ---------- */
+  const FLAG_KIND_LABEL = {
+    ocr: 'पाठभेदः (Differs from scan)',
+    print: 'मुद्रणदोषः? (Possible misprint)',
+    verify: 'परीक्षणीयम् (Please verify)'
+  };
+
+  // A flag is resolved once its flagged text no longer appears in its section
+  function isFlagOpen(item, f) {
+    return (item[f.section] || '').includes(f.match);
+  }
+
+  function openFlagCount(item) {
+    return (item.flags || []).filter(f => isFlagOpen(item, f)).length;
+  }
+
+  function flagRanges(text, match) {
+    const ranges = [];
+    for (let i = text.indexOf(match); match && i !== -1; i = text.indexOf(match, i + match.length)) {
+      ranges.push([i, i + match.length]);
+    }
+    return ranges;
+  }
+
+  function backdropHtml(text, marks) {
+    let html = '', pos = 0;
+    marks.sort((a, b) => a.start - b.start).forEach(m => {
+      if (m.start < pos) return;
+      html += escapeHtml(text.slice(pos, m.start)) + `<mark class="flag flag-${m.kind}">${escapeHtml(text.slice(m.start, m.end))}</mark>`;
+      pos = m.end;
+    });
+    // Trailing newline keeps the backdrop's last line in step with the textarea
+    return html + escapeHtml(text.slice(pos)) + '\n';
+  }
+
+  function renderFlags() {
+    const item = data[currentIndex];
+    const flags = item.flags || [];
+    [['sec1', sec1Backdrop], ['sec2', sec2Backdrop]].forEach(([sec, backdrop]) => {
+      const text = item[sec] || '';
+      const marks = [];
+      flags.filter(f => f.section === sec).forEach(f =>
+        flagRanges(text, f.match).forEach(([start, end]) => marks.push({ start, end, kind: f.kind })));
+      backdrop.innerHTML = backdropHtml(text, marks);
+    });
+
+    flagPanel.hidden = !flags.length;
+    if (flags.length) {
+      const open = openFlagCount(item);
+      flagTitle.innerText = `⚑ समीक्षणीयानि पदानि (Words to review) — ${toDevanagariDigits(open)} / ${toDevanagariDigits(flags.length)}`;
+      flagList.innerHTML = flags.map((f, i) => {
+        const isOpen = isFlagOpen(item, f);
+        const where = f.section === 'sec2' ? '<span class="flag-where">२. पदच्छेदः</span>' : '';
+        const words = `<span class="flag-match">${escapeHtml(f.match)}</span>` +
+          (f.suggest ? ` → <span class="flag-suggest">${escapeHtml(f.suggest)}</span>` : '');
+        const actions = isOpen
+          ? `<button class="light-btn" onclick="showFlag(${i})" title="पाठे दर्शयतु (Show in the text)">दर्शयतु (Show)</button>` +
+            (f.suggest ? `<button class="light-btn" onclick="acceptFlag(${i})" title="सूचितं पाठं स्वीकरोतु (Use the suggested reading)">स्वीकरोतु (Accept)</button>` : '')
+          : '<span class="flag-done">✔ परिष्कृतम् (Resolved)</span>';
+        return `<div class="flag-item kind-${f.kind}${isOpen ? '' : ' resolved'}">
+          <div class="flag-head"><span class="flag-kind">${FLAG_KIND_LABEL[f.kind] || f.kind}</span><span class="flag-words">${words}</span>${where}</div>
+          <div class="flag-actions">${actions}</div>
+          <div class="flag-note">${escapeHtml(f.note || '')}</div>
+        </div>`;
+      }).join('');
+    }
+    refreshPageOption(currentIndex);
+  }
+
+  function flagEditor(f) {
+    return f.section === 'sec2' ? sec2Editor : sec1Editor;
+  }
+
+  function showFlag(i) {
+    const f = data[currentIndex].flags[i];
+    if (f.section === 'sec2' && !document.getElementById('sec2Box').classList.contains('visible')) {
+      toggleSection('sec2Box', 'toggleSec2');
+    }
+    const editor = flagEditor(f);
+    const start = editor.value.indexOf(f.match);
+    if (start !== -1) jumpToChange(start, start + f.match.length, editor);
+  }
+
+  function acceptFlag(i) {
+    const f = data[currentIndex].flags[i];
+    const editor = flagEditor(f);
+    const start = editor.value.indexOf(f.match);
+    if (start === -1 || !f.suggest) return;
+    editor.value = editor.value.slice(0, start) + f.suggest + editor.value.slice(start + f.match.length);
+    if (f.section === 'sec2') handleSec2Edit(); else handleEdit();
+    showToast(`✔ ${f.suggest} — स्वीकृतम् (Accepted; remember to save)`);
   }
 
   function updateStatus() {
@@ -1331,6 +1501,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     autoResize(sec2Editor);
     data[currentIndex].sec2 = sec2Editor.value;
     updateStatus();
+    renderFlags();
   }
 
   function revertCurrentPage() {
@@ -1357,6 +1528,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     proofPanel.hidden = !changed;
     if (changed) renderProofMarks(diffTokens(tokenize(item.baseline), tokenize(currentText)));
     updateStatus();
+    renderFlags();
   }
 
   function tokenize(str) {
@@ -1484,12 +1656,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     return marker.offsetTop;
   }
 
-  function jumpToChange(start, end) {
-    sec1Editor.focus({ preventScroll: true });
-    sec1Editor.setSelectionRange(start, Math.max(start, end));
+  function jumpToChange(start, end, editor = sec1Editor) {
+    editor.focus({ preventScroll: true });
+    editor.setSelectionRange(start, Math.max(start, end));
     const paneRect = textPane.getBoundingClientRect();
-    const editorTop = sec1Editor.getBoundingClientRect().top - paneRect.top + textPane.scrollTop;
-    const target = editorTop + caretOffsetTop(sec1Editor, start) - paneRect.height / 3;
+    const editorTop = editor.getBoundingClientRect().top - paneRect.top + textPane.scrollTop;
+    const target = editorTop + caretOffsetTop(editor, start) - paneRect.height / 3;
     textPane.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
   }
 
@@ -2489,6 +2661,11 @@ def generate_viewer(standalone=False):
         print(f"[Error] No markdown files found in {RAW_DIR}/.")
         return
 
+    review_flags = {}
+    if os.path.exists(REVIEW_FLAGS_JSON):
+        with open(REVIEW_FLAGS_JSON, "r", encoding="utf-8") as f:
+            review_flags = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
+
     pages_data = []
     for md_path in md_files:
         match = re.search(r"page_(\d+)\.md", os.path.basename(md_path))
@@ -2521,7 +2698,8 @@ def generate_viewer(standalone=False):
             "sec1": sec1,
             "sec2": sec2,
             "sec3_md": sec3_md,
-            "sec3_html": sec3_html
+            "sec3_html": sec3_html,
+            "flags": review_flags.get(p_num, [])
         })
 
     json_data = json.dumps(pages_data, ensure_ascii=False)

@@ -27,6 +27,7 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 ├── output/
 │   ├── raw/                                   # Agent-generated OCR markdown (page_015.md … page_032.md), committed
 │   ├── verified/                              # Scholar-verified final markdown files
+│   ├── review_flags.json                      # Words flagged for scholar review (shown in the portal)
 │   └── proofread_bundle.html                  # (git-ignored) Optional offline portal with embedded scans (--standalone)
 ├── scripts/
 │   ├── extract_pages.py                       # PyMuPDF extractor: extract_pages.py START END [--dpi N]
@@ -82,6 +83,13 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
 - **Auto-Fitting & Resizable Area:** Textareas automatically resize to the full height of the text content without internal scrollbars while preserving manual drag handles.
 - **Typography Controls (⚙ menu):** A numeric font-size input (14–48, default 22), `A−` / `A+` step buttons, and a font family selector (`Tiro Devanagari Sanskrit` (default), `Martel`, `Sahitya`, `Noto Serif Devanagari`, `Siddhanta`). All but Siddhanta load from Google Fonts; Siddhanta works only if it is installed locally. The chosen font is also used for the notes table, the Complete Text preview, copied text and Word/PDF exports. Headings use larger regular-weight type, because Tiro has no bold.
 - **Real-Time Proof Marks:** Edits to Section 1 are compared word by word (LCS diff) with the original OCR as they are typed. The results appear in a panel pinned to the bottom of the text pane, so they are always in view. The panel lists each change with surrounding context: deletions are struck through in red and insertions highlighted in amber/yellow (`#fef08a`). Clicking a change selects it in the editor. The panel can switch to a full-text view or collapse. A **↺ पूर्ववत् (Revert)** button restores the OCR text.
+- **Review Flags:** `output/review_flags.json` lists words that need the scholar's attention, keyed by PDF page.
+  - Each entry has: `section` (`sec1`/`sec2`), the exact `match` text, an optional `suggest` replacement, a `kind`, and a `note`.
+  - There are three kinds: `ocr` (transcription differs from the scan; red wavy highlight), `print` (matches the scan but is probably a misprint; amber), and `verify` (unclear in the scan; blue dotted).
+  - Flagged words are highlighted inside the editors by a layer drawn behind the transparent textarea.
+  - A ⚑ card above Section 1 lists the flags with notes. **दर्शयतु (Show)** selects the word in the text. **स्वीकरोतु (Accept)** applies the suggestion as a normal edit, so it appears in the proof marks and still needs saving.
+  - A flag counts as resolved once its text no longer appears. The page dropdown shows the number of open flags (⚑n).
+  - The transcriptions themselves are not changed by flagging.
 - **Copy Actions:** Per-section copy buttons; "Copy page text" and "Copy page with notes" are in the ⚙ menu. Where the browser supports it, the copied content is rich HTML that pastes cleanly into Word / Google Docs.
 - **Complete Text View (सम्पूर्णः ग्रन्थः):** A modal that compiles all pages into one reader-friendly text, using the current in-browser edits.
   - Options choose which sections to include (1/2/3), show page-number headers, and join words hyphenated across page breaks (पृष्ठसन्धि-संयोजनम्, on by default).

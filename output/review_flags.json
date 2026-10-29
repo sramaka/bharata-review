@@ -1,0 +1,43 @@
+{
+  "_about": "Words flagged for the scholar's review after comparing the transcriptions with the page scans. kind: 'ocr' = the transcription differs from the scan; 'print' = matches the scan but is probably a printing error; 'verify' = the scan is unclear. 'match' is the exact text highlighted in the section; 'suggest' (optional) is offered as a one-click replacement.",
+  "016": [
+    {"section": "sec1", "match": "श्वश्वा", "suggest": "श्वश्र्वा", "kind": "ocr",
+     "note": "मुद्रणे 'श्र्व' दृश्यते — the scan shows श्वश्र्वा (instrumental of श्वश्रू, 'by the mother-in-law'); the र is missing."},
+    {"section": "sec2", "match": "श्वश्वा", "suggest": "श्वश्र्वा", "kind": "ocr",
+     "note": "Padaccheda repeats the same missing र: श्वश्र्वा."},
+    {"section": "sec1", "match": "सम्यग्बध्वा", "suggest": "सम्यग्बद्ध्वा", "kind": "print",
+     "note": "The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). Keep the printed form with a मुद्रणदोषः note, or correct it."}
+  ],
+  "022": [
+    {"section": "sec1", "match": "मोचयँस्ततो", "suggest": "मोचयंस्ततो", "kind": "ocr",
+     "note": "मुद्रणे अनुस्वारः — the scan prints an anusvāra (मोचयं-स्ततो), not a candrabindu."},
+    {"section": "sec1", "match": "सङ्घर्ष’", "kind": "verify",
+     "note": "The scan may read सङ्घर्षे’ (with e-mātrā). Please check the print; सङ्घर्ष इति (nominative with visarga dropped) is also grammatical."}
+  ],
+  "023": [
+    {"section": "sec1", "match": "कश्चित्कालं", "suggest": "कञ्चित्कालं", "kind": "ocr",
+     "note": "कालम् is accusative here, so कञ्चित् is expected; the print uses ञ्च, which is easily misread as श्च (see the same phrase on pages 024 and 025)."},
+    {"section": "sec1", "match": "कश्चित्पुरुषं", "suggest": "कञ्चित्पुरुषं", "kind": "ocr",
+     "note": "पुरुषम् is the object of अभाषत, so कञ्चित् (accusative) is expected; likely the ञ्च / श्च confusion."},
+    {"section": "sec1", "match": "व्याचख्ये", "kind": "verify",
+     "note": "The scan appears to read व्याचक्षे-. व्याचख्ये (perfect, 'he explained') is the grammatical form here; confirm what the print has."}
+  ],
+  "024": [
+    {"section": "sec1", "match": "कश्चित्कालमुषितै", "suggest": "कञ्चित्कालमुषितै", "kind": "ocr",
+     "note": "मुद्रणे 'कञ्चित्' — the scan clearly reads कञ्चित्कालमुषितैः."},
+    {"section": "sec1", "match": "ब्रिलमार्गेणापसृत्य", "suggest": "बिलमार्गेणापसृत्य", "kind": "ocr",
+     "note": "बिल ('tunnel, hole'); ब्रिल is not a word. The padaccheda already has बिल-मार्गेण."}
+  ],
+  "025": [
+    {"section": "sec1", "match": "कश्चित्कालं", "suggest": "कञ्चित्कालं", "kind": "ocr",
+     "note": "मुद्रणे 'कञ्चित्' — the scan clearly reads कञ्चित्कालं गमयामासुः."}
+  ],
+  "027": [
+    {"section": "sec1", "match": "तेनोत्कण्ठतास्ते", "suggest": "तेनोत्कण्ठितास्ते", "kind": "ocr",
+     "note": "मुद्रणे 'ठि' — the scan reads उत्कण्ठिताः; the इ-mātrā is missing."}
+  ],
+  "031": [
+    {"section": "sec1", "match": "मन्दशक्तिर्भवँस्तत्रभवतः", "suggest": "मन्दशक्तिर्भवंस्तत्रभवतः", "kind": "ocr",
+     "note": "मुद्रणे अनुस्वारः — the scan prints an anusvāra (भवंस्), not a candrabindu."}
+  ]
+}
