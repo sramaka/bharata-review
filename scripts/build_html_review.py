@@ -1098,8 +1098,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <button class="btn-copy-big" onclick="copyCompiledBook()" title="Word, Google Docs, Email आदौ स्थापयितुं पाठं प्रतिकुरुत (Copy clean text for Word, Google Docs, or Email)">
           📋 पाठं प्रतिकुरुत (Copy Text)
         </button>
-        <button class="btn-export-light" onclick="downloadWordDoc()" title="Microsoft Word (.doc) सञ्चिकां अवतारयतु (Download Word Document)">
-          📘 Word (.doc)
+        <button class="btn-export-light" onclick="downloadWordDoc()" title="Microsoft Word (.docx) सञ्चिकां अवतारयतु (Download Word Document)">
+          📘 Word (.docx)
         </button>
         <button class="btn-export-light" onclick="printOrSavePdf()" title="PDF रूपेण रक्षतु अथवा मुद्रयतु (Save as PDF or Print)">
           🖨️ PDF / मुद्रणम्
@@ -1930,11 +1930,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     copyToClipboard(compiled.plain, `✔ सम्पूर्णः पाठः प्रतिकृतः — Word / Docs मध्ये स्थापयतु (Copied! Paste anywhere)`, richHtml);
   }
 
-  function buildExportDocumentHtml() {
+  const BOOK_TITLE = 'श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः';
+
+  // Title page, table of contents, reading key and text: shared by the PDF and Word exports
+  function buildExportBodyHtml() {
     const compiled = buildCompiledBookData();
     const opts = getModalOptions();
-    const body = [buildTitlePageHtml(opts), buildTocHtml(compiled.toc), buildReadingKeyHtml(opts), compiled.html].join('\n');
-    return buildStandaloneDocumentHtml('श्रीमल्लक्ष्मणसूरिविरचितः भारतसङ्ग्रहः', body);
+    return [buildTitlePageHtml(opts), buildTocHtml(compiled.toc), buildReadingKeyHtml(opts), compiled.html].join('\n');
+  }
+
+  function buildExportDocumentHtml() {
+    return buildStandaloneDocumentHtml(BOOK_TITLE, buildExportBodyHtml());
   }
 
   function buildStandaloneDocumentHtml(title, bodyHtml) {
@@ -2047,10 +2053,299 @@ ${bodyHtml}
   }
 
   function downloadWordDoc() {
-    const docHtml = '\ufeff' + buildExportDocumentHtml();
-    const filename = `bharata_sangraha_${pageRangeTag()}.doc`;
-    triggerFileDownload(filename, docHtml, 'application/msword;charset=utf-8');
+    const docx = buildDocx(buildExportBodyHtml());
+    const filename = `bharata_sangraha_${pageRangeTag()}.docx`;
+    triggerFileDownload(filename, docx, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     showToast(`📘 Word सञ्चिका (${filename}) अवतारिता!`);
+  }
+
+  /* ---------- Word (.docx) export ----------
+     The export HTML (the same markup the PDF uses) is walked element by element and written
+     out as WordprocessingML with named styles, then packed into a zip without compression. */
+
+  function xmlEscape(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // Word bookmark names allow letters, digits and underscores only
+  function docxBookmarkName(id) {
+    return id.replace(/[^A-Za-z0-9_]/g, '_');
+  }
+
+  // First family of the chosen text font, e.g. "Tiro Devanagari Sanskrit"
+  function docxTextFont() {
+    const chosen = getComputedStyle(document.documentElement).getPropertyValue('--font-family');
+    return chosen.split(',')[0].replace(/['"]/g, '').trim() || 'Tiro Devanagari Sanskrit';
+  }
+
+  const DOCX_LATIN_FONT = 'Noto Serif';
+  const DOCX_TEXT_WIDTH = 9412;  // A4 width minus 2.2 cm margins, in twips
+
+  function docxRun(text, rPr) {
+    const props = rPr ? `<w:rPr>${rPr}</w:rPr>` : '';
+    return text.split('\n').map((line, i) =>
+      (i ? `<w:r>${props}<w:br/></w:r>` : '') + (line ? `<w:r>${props}<w:t xml:space="preserve">${xmlEscape(line)}</w:t></w:r>` : '')
+    ).join('');
+  }
+
+  // Inline content of an element as runs: bold, italic, English glosses, line breaks, links
+  function docxRuns(node, rPr = '') {
+    let out = '';
+    node.childNodes.forEach(child => {
+      if (child.nodeType === Node.TEXT_NODE) { out += docxRun(child.textContent, rPr); return; }
+      if (child.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = child.tagName.toLowerCase();
+      if (tag === 'br') { out += '<w:r><w:br/></w:r>'; return; }
+      let extra = '';
+      if (tag === 'strong' || tag === 'b') extra = '<w:b/><w:bCs/>';
+      else if (tag === 'em' || tag === 'i') extra = '<w:i/><w:iCs/>';
+      else if (child.classList.contains('key-gloss')) {
+        extra = `<w:rFonts w:ascii="${DOCX_LATIN_FONT}" w:hAnsi="${DOCX_LATIN_FONT}"/><w:color w:val="57534E"/><w:sz w:val="20"/><w:szCs w:val="20"/>`;
+      }
+      const inner = docxRuns(child, rPr + extra);
+      if (tag === 'a' && (child.getAttribute('href') || '').startsWith('#')) {
+        out += `<w:hyperlink w:anchor="${docxBookmarkName(child.getAttribute('href').slice(1))}" w:history="1">${inner}</w:hyperlink>`;
+      } else {
+        out += inner;
+      }
+    });
+    return out;
+  }
+
+  let docxBookmarkId = 0;
+  function docxParagraph(style, runs, { jc = '', firstLine = false, bookmark = '' } = {}) {
+    const pPr = `<w:pPr><w:pStyle w:val="${style}"/>${firstLine ? '<w:ind w:firstLine="420"/>' : ''}${jc ? `<w:jc w:val="${jc}"/>` : ''}</w:pPr>`;
+    if (!bookmark) return `<w:p>${pPr}${runs}</w:p>`;
+    const id = ++docxBookmarkId;
+    return `<w:p>${pPr}<w:bookmarkStart w:id="${id}" w:name="${docxBookmarkName(bookmark)}"/>${runs}<w:bookmarkEnd w:id="${id}"/></w:p>`;
+  }
+
+  function docxTable(table) {
+    const rows = [...table.querySelectorAll('tr')];
+    const cols = Math.max(1, ...rows.map(r => r.children.length));
+    const colW = Math.floor(DOCX_TEXT_WIDTH / cols);
+    const border = side => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="94A3B8"/>`;
+    const xmlRows = rows.map(tr => {
+      const isHeader = tr.parentElement && tr.parentElement.tagName.toLowerCase() === 'thead';
+      const cells = [...tr.children].map(td => {
+        const shade = isHeader ? '<w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/>' : '';
+        return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/>${shade}</w:tcPr>${docxParagraph('TableText', docxRuns(td, isHeader ? '<w:b/><w:bCs/>' : ''))}</w:tc>`;
+      }).join('');
+      return `<w:tr>${isHeader ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${cells}</w:tr>`;
+    }).join('');
+    return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(border).join('')}</w:tblBorders>` +
+      `<w:tblCellMar><w:left w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr>` +
+      `<w:tblGrid>${'<w:gridCol w:w="' + colW + '"/>'.repeat(cols)}</w:tblGrid>${xmlRows}</w:tbl>` +
+      docxParagraph('TableSpacer', '');
+  }
+
+  // Table of contents: a real Word TOC field (Right-click → Update Field adds page numbers),
+  // pre-filled with linked entries and printed page ranges so it reads well before updating
+  function docxToc(tocDiv) {
+    const out = [];
+    const title = tocDiv.querySelector('.book-toc-title');
+    if (title) out.push(docxParagraph('TOCHeading', docxRuns(title)));
+    const rows = [...tocDiv.querySelectorAll('tr')];
+    rows.forEach((tr, i) => {
+      const link = tr.querySelector('a');
+      const pages = tr.querySelector('.toc-pages');
+      const anchor = link ? docxBookmarkName((link.getAttribute('href') || '#').slice(1)) : '';
+      let runs = docxRuns(link || tr) + (pages && pages.textContent ? `<w:r><w:tab/></w:r>${docxRun(pages.textContent, '')}` : '');
+      if (anchor) runs = `<w:hyperlink w:anchor="${anchor}" w:history="1">${runs}</w:hyperlink>`;
+      if (i === 0) runs = '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \\o "1-2" \\h \\z \\u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>' + runs;
+      if (i === rows.length - 1) runs += '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+      out.push(docxParagraph(tr.classList.contains('toc-part') ? 'TOC1' : 'TOC2', runs));
+    });
+    return out;
+  }
+
+  function docxBlocks(el, ctx) {
+    const out = [];
+    el.childNodes.forEach(node => {
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = node.tagName.toLowerCase();
+      const cls = node.classList;
+      const style = node.getAttribute('style') || '';
+      const centred = /text-align:\s*center/.test(style);
+      const id = node.getAttribute('id') || '';
+
+      if (cls.contains('title-page')) {
+        const map = { 'tp-shri': 'TitleShri', 'tp-author': 'TitleAuthor', 'tp-title': 'Title', 'tp-latin': 'TitleLatin', 'tp-meta': 'TitleMeta' };
+        [...node.children].forEach(c => {
+          const s = Object.keys(map).find(k => c.classList.contains(k));
+          if (s) out.push(docxParagraph(map[s], docxRuns(c)));
+        });
+        out.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+      } else if (cls.contains('book-toc')) {
+        out.push(...docxToc(node));
+      } else if (cls.contains('reading-key-title')) {
+        out.push(docxParagraph('KeyTitle', docxRuns(node)));
+      } else if (cls.contains('book-notes-page')) {
+        out.push(docxParagraph('NotesPageLabel', docxRuns(node)));
+      } else if (tag === 'table') {
+        out.push(docxTable(node));
+      } else if (tag === 'div') {
+        out.push(...docxBlocks(node, cls.contains('book-en') ? { ...ctx, english: true } : ctx));
+      } else if (tag === 'h1') {
+        out.push(docxParagraph('Heading1', docxRuns(node), { bookmark: id }));
+      } else if (tag === 'h2') {
+        out.push(docxParagraph('Heading2', docxRuns(node), { bookmark: id }));
+      } else if (tag === 'h3') {
+        out.push(docxParagraph(cls.contains('book-notes-heading') ? 'NotesHeading' : 'Heading3', docxRuns(node), { bookmark: id }));
+      } else if (tag === 'p') {
+        if (cls.contains('pada-para')) {
+          out.push(docxParagraph(centred ? 'PadacchedaCentred' : 'Padaccheda', docxRuns(node)));
+        } else if (cls.contains('src-para')) {
+          out.push(docxParagraph(ctx.english ? 'BodyEnglish' : 'SourceText', docxRuns(node),
+            { jc: centred ? 'center' : '', firstLine: !centred && /text-indent/.test(style) }));
+        } else {
+          out.push(docxParagraph(ctx.english ? 'BodyEnglish' : 'SourceText', docxRuns(node), { jc: centred ? 'center' : '' }));
+        }
+      }
+    });
+    return out;
+  }
+
+  function docxStyles(font) {
+    const fonts = (f, cs = font) => `<w:rFonts w:ascii="${f}" w:hAnsi="${f}" w:eastAsia="${f}" w:cs="${cs}"/>`;
+    const size = hp => `<w:sz w:val="${hp}"/><w:szCs w:val="${hp}"/>`;
+    const color = c => `<w:color w:val="${c}"/>`;
+    const para = (id, name, { basedOn = 'Normal', next = '', pPr = '', rPr = '', outline = null, builtIn = false } = {}) =>
+      `<w:style w:type="paragraph"${builtIn ? '' : ' w:customStyle="1"'} w:styleId="${id}"><w:name w:val="${name}"/>` +
+      (basedOn ? `<w:basedOn w:val="${basedOn}"/>` : '') + (next ? `<w:next w:val="${next}"/>` : '') + '<w:qFormat/>' +
+      `<w:pPr>${pPr}${outline !== null ? `<w:outlineLvl w:val="${outline}"/>` : ''}</w:pPr><w:rPr>${rPr}</w:rPr></w:style>`;
+    const deep = '7C2D12', rust = '9A3412';
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:docDefaults>
+  <w:rPrDefault><w:rPr>${fonts(font)}${size(31)}<w:lang w:val="en-GB" w:eastAsia="en-GB" w:bidi="sa-IN"/></w:rPr></w:rPrDefault>
+  <w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="384" w:lineRule="auto"/></w:pPr></w:pPrDefault>
+</w:docDefaults>
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr>${color('111827')}</w:rPr></w:style>
+${para('SourceText', 'Source Text', { pPr: '<w:spacing w:after="80"/><w:jc w:val="both"/>' })}
+${para('Padaccheda', 'Padaccheda', { next: 'SourceText', pPr: '<w:pBdr><w:left w:val="single" w:sz="12" w:space="8" w:color="C7D2FE"/></w:pBdr><w:spacing w:after="240" w:line="360" w:lineRule="auto"/><w:ind w:left="567"/><w:jc w:val="left"/>', rPr: size(26) + color('3B4A6B') })}
+${para('PadacchedaCentred', 'Padaccheda Centred', { basedOn: 'Padaccheda', pPr: '<w:pBdr><w:left w:val="nil"/></w:pBdr><w:ind w:left="0"/><w:jc w:val="center"/>' })}
+${para('BodyEnglish', 'Body English', { pPr: '<w:spacing w:after="160" w:line="336" w:lineRule="auto"/><w:jc w:val="left"/>', rPr: fonts(DOCX_LATIN_FONT) + size(24) })}
+${para('Heading1', 'heading 1', { builtIn: true, next: 'SourceText', outline: 0, pPr: '<w:keepNext/><w:pageBreakBefore/><w:spacing w:before="3600" w:after="240"/><w:jc w:val="center"/>', rPr: size(60) + color(deep) })}
+${para('Heading2', 'heading 2', { builtIn: true, next: 'SourceText', outline: 1, pPr: '<w:keepNext/><w:pageBreakBefore/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="6" w:color="FED7AA"/></w:pBdr><w:spacing w:before="0" w:after="360"/><w:jc w:val="center"/>', rPr: size(48) + color(deep) })}
+${para('Heading3', 'heading 3', { builtIn: true, next: 'SourceText', outline: 2, pPr: '<w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="2" w:color="FED7AA"/></w:pBdr><w:spacing w:before="360" w:after="120"/>', rPr: size(24) + color(rust) })}
+${para('NotesHeading', 'Notes Heading', { next: 'NotesPageLabel', outline: 2, pPr: '<w:keepNext/><w:pBdr><w:top w:val="single" w:sz="4" w:space="8" w:color="E7E5E4"/></w:pBdr><w:spacing w:before="560" w:after="120"/>', rPr: size(30) + color(deep) })}
+${para('NotesPageLabel', 'Notes Page Label', { pPr: '<w:keepNext/><w:spacing w:before="200" w:after="60"/>', rPr: size(22) + color(rust) })}
+${para('TableText', 'Table Text', { pPr: '<w:spacing w:before="40" w:after="40" w:line="300" w:lineRule="auto"/>', rPr: size(20) })}
+${para('TableSpacer', 'Table Spacer', { pPr: '<w:spacing w:after="120"/>', rPr: size(12) })}
+${para('Title', 'Title', { builtIn: true, pPr: '<w:spacing w:before="120" w:after="720"/><w:jc w:val="center"/>', rPr: size(80) + color(deep) })}
+${para('TitleShri', 'Title Shri', { pPr: '<w:spacing w:before="2400" w:after="0"/><w:jc w:val="center"/>', rPr: size(32) })}
+${para('TitleAuthor', 'Title Author', { pPr: '<w:spacing w:before="960" w:after="0"/><w:jc w:val="center"/>', rPr: size(34) })}
+${para('TitleLatin', 'Title Latin', { pPr: '<w:spacing w:after="0" w:line="300" w:lineRule="auto"/><w:jc w:val="center"/>', rPr: fonts(DOCX_LATIN_FONT) + size(26) })}
+${para('TitleMeta', 'Title Meta', { pPr: '<w:spacing w:before="1440" w:after="0" w:line="300" w:lineRule="auto"/><w:jc w:val="center"/>', rPr: fonts(DOCX_LATIN_FONT) + size(21) + color('555555') })}
+${para('TOCHeading', 'TOC Heading', { builtIn: true, pPr: '<w:spacing w:after="360"/><w:jc w:val="center"/>', rPr: size(44) + color(deep) })}
+${para('TOC1', 'toc 1', { builtIn: true, pPr: `<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${DOCX_TEXT_WIDTH}"/></w:tabs><w:spacing w:before="240" w:after="60"/>`, rPr: size(28) + color(deep) })}
+${para('TOC2', 'toc 2', { builtIn: true, pPr: `<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${DOCX_TEXT_WIDTH}"/></w:tabs><w:spacing w:after="60"/><w:ind w:left="360"/>`, rPr: size(28) })}
+${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:after="120"/>', rPr: size(24) + color(deep) })}
+<w:style w:type="character" w:styleId="Hyperlink"><w:name w:val="Hyperlink"/><w:rPr>${color('1E3A8A')}</w:rPr></w:style>
+</w:styles>`;
+  }
+
+  function buildDocx(bodyHtml) {
+    docxBookmarkId = 0;
+    const font = docxTextFont();
+    const doc = new DOMParser().parseFromString(`<body>${bodyHtml}</body>`, 'text/html');
+    const blocks = docxBlocks(doc.body, { english: false });
+    const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document ${W}><w:body>${blocks.join('\n')}<w:p/>
+<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="11906" w:h="16838"/>
+<w:pgMar w:top="1247" w:right="1247" w:bottom="1247" w:left="1247" w:header="708" w:footer="567" w:gutter="0"/><w:titlePg/></w:sectPr>
+</w:body></w:document>`;
+    const footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr ${W}><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="${DOCX_LATIN_FONT}" w:hAnsi="${DOCX_LATIN_FONT}"/><w:color w:val="666666"/><w:sz w:val="20"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
+    const settingsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/>
+<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
+<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
+<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+</Types>`;
+    const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+</Relationships>`;
+    const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+<Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
+<Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+</Relationships>`;
+    const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+    const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<dc:title>${xmlEscape(BOOK_TITLE)}</dc:title><dc:language>sa</dc:language>
+<dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
+</cp:coreProperties>`;
+    return zipStore([
+      ['[Content_Types].xml', contentTypes],
+      ['_rels/.rels', rootRels],
+      ['docProps/core.xml', coreXml],
+      ['word/document.xml', documentXml],
+      ['word/styles.xml', docxStyles(font)],
+      ['word/settings.xml', settingsXml],
+      ['word/_rels/document.xml.rels', docRels],
+      ['word/footer1.xml', footerXml],
+    ]);
+  }
+
+  /* Minimal zip writer (stored entries, no compression): enough for a .docx package */
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function zipStore(entries) {
+    const enc = new TextEncoder();
+    const d = new Date();
+    const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const chunks = [], central = [];
+    let offset = 0;
+    entries.forEach(([name, content]) => {
+      const nameBytes = enc.encode(name), data = enc.encode(content), crc = crc32(data);
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true);
+      local.setUint16(8, 0, true); local.setUint16(10, dosTime, true); local.setUint16(12, dosDate, true);
+      local.setUint32(14, crc, true); local.setUint32(18, data.length, true); local.setUint32(22, data.length, true);
+      local.setUint16(26, nameBytes.length, true); local.setUint16(28, 0, true);
+      chunks.push(new Uint8Array(local.buffer), nameBytes, data);
+      const cen = new DataView(new ArrayBuffer(46));
+      cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true); cen.setUint16(8, 0x0800, true);
+      cen.setUint16(10, 0, true); cen.setUint16(12, dosTime, true); cen.setUint16(14, dosDate, true);
+      cen.setUint32(16, crc, true); cen.setUint32(20, data.length, true); cen.setUint32(24, data.length, true);
+      cen.setUint16(28, nameBytes.length, true); cen.setUint32(42, offset, true);
+      central.push(new Uint8Array(cen.buffer), nameBytes);
+      offset += 30 + nameBytes.length + data.length;
+    });
+    const centralSize = central.reduce((n, c) => n + c.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+    end.setUint32(12, centralSize, true); end.setUint32(16, offset, true);
+    return new Blob([...chunks, ...central, new Uint8Array(end.buffer)]);
   }
 
   function printOrSavePdf() {

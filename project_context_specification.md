@@ -87,7 +87,7 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
   - Options choose which sections to include (1/2/3), show page-number headers, and join words hyphenated across page breaks (पृष्ठसन्धि-संयोजनम्, on by default).
   - Front matter (Foreword, Works, Contents) is left out unless **प्रस्तावनादि (Front Matter)** is ticked. When it is included, it comes first, English pages use a Latin font, and a rule separates it from the main text.
   - Text is compiled per section (Foreword, each parva, …), so one section never runs on into the next. With only Section 1 selected, joining on, and page numbers off, each section renders as one continuous flow. Page headers use the section label (e.g. `आदिपर्व · पृ. ३ (PDF 017)`).
-  - Exports: **Rich Copy**, **Word (.doc)**, **PDF / Print** (opens a print window, so pop-ups must be allowed), and **Markdown (.md)**.
+  - Exports: **Rich Copy**, **Word (.docx)**, **PDF / Print** (opens a print window, so pop-ups must be allowed), and **Markdown (.md)**.
   - Word and PDF exports are laid out as a book:
     - A title page.
     - A linked अनुक्रमणिका (Table of Contents) listing each section with its printed page range (e.g. `आदिपर्व … पृ. १–१८`).
@@ -101,6 +101,7 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
     - Verses and short lines are centred, prose gets a first-line indent, and a padaccheda identical to its source (e.g. `श्रीः`) is omitted.
     - A पठनसङ्केतः (How to read) key explains the two styles.
     - With page numbers off, editorial notes are gathered at the end of each section, labelled by page. With page numbers on, they follow each page.
+  - **Word export** produces a real `.docx` (Office Open XML). It is generated in the browser from the same export markup as the PDF and packed by a small built-in zip writer, with no external libraries. It uses named styles: `Source Text`, `Padaccheda`, `Padaccheda Centred`, `Body English`, Heading 1–3, `Notes Heading`, `Title`, and `toc 1`/`toc 2`. The table of contents is a real Word TOC field, pre-filled with linked entries; right-click → Update Field adds Word page numbers. Notes are Word tables with a repeating header row, and the footer has a PAGE field (none on the title page). Word shows the chosen text font (default Tiro Devanagari Sanskrit) only if it is installed on that computer.
   - Headings are real H1 (parts) / H2 (sections) / H3 (page markers, when page numbers are on), so Word's Navigation Pane and PDF links work. The in-app preview shows the same table of contents and headings. Exported files are named `bharata_sangraha_<first>_to_<last>` after the PDF pages included.
   - `Esc` closes the modal.
 - **Zero-Prompt Persistence:** Clicking **💾 रक्षतु (Save)** POSTs `{page, content}` (the full 3-section Markdown) to the Google Apps Script Web App URL as `text/plain`, persisting `page_XXX.md` to `bharata_verified_pages/` in Google Drive. The button then shows `✔ रक्षितम्` along with a toast.
