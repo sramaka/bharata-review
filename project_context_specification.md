@@ -90,6 +90,7 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
   - A ⚑ card above Section 1 lists the flags with notes. **दर्शयतु (Show)** selects the word in the text. **स्वीकरोतु (Accept)** applies the suggestion as a normal edit, so it appears in the proof marks and still needs saving.
   - A flag counts as resolved once its text no longer appears. The page dropdown shows the number of open flags (⚑n).
   - The transcriptions themselves are not changed by flagging.
+  - **In exports:** the Complete Text option **⚑ समीक्षणीयानि (Mark Words to Review)**, on by default, marks each open flag in the Word/PDF/copied text. The word gets the flag's colour and a numbered ⚑n superscript, and a "Words to Review" list (number, word → suggestion, page, kind, note) closes each section. Plain-text copies show `word[⚑n]`. Accepted or edited-away flags are left out; untick the option for a clean copy.
 - **Copy Actions:** Per-section copy buttons; "Copy page text" and "Copy page with notes" are in the ⚙ menu. Where the browser supports it, the copied content is rich HTML that pastes cleanly into Word / Google Docs.
 - **Complete Text View (सम्पूर्णः ग्रन्थः):** A modal that compiles all pages into one reader-friendly text, using the current in-browser edits.
   - Options choose which sections to include (1/2/3), show page-number headers, and join words hyphenated across page breaks (पृष्ठसन्धि-संयोजनम्, on by default).

@@ -934,6 +934,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     color: #9a3412;
     margin: 12px 0 4px 0;
   }
+  .review-heading { color: #991b1b; }
+  .book-preview-sheet p.review-item { font-size: 0.8em; line-height: 1.6; text-align: left; margin: 0 0 0.7em 0; }
+  .review-num { color: #991b1b; }
+  .review-where, .review-note { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 0.8em; color: #57534e; }
 
   /* Toast Notification */
   .toast {
@@ -1146,6 +1150,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <label title="प्रस्तावना, कृतयः, विषयसूची च (Include the Foreword, Works and Contents before the main text)">
           <input type="checkbox" id="optFrontMatter" onchange="refreshCompiledView()">
           प्रस्तावनादि (Front Matter)
+        </label>
+        <label title="समीक्षणीयानि पदानि चिह्नयतु (Mark the words flagged for review, with a list at the end of each section)">
+          <input type="checkbox" id="optReviewFlags" checked onchange="refreshCompiledView()">
+          ⚑ समीक्षणीयानि (Mark Words to Review)
         </label>
         <label title="पृष्ठसङ्ख्याः दर्शयतु (Show page number headers)">
           <input type="checkbox" id="optShowPageNums" onchange="refreshCompiledView()">
@@ -1788,6 +1796,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       mergeHyphens: document.getElementById('optMergeHyphens').checked,
       showPageNums: document.getElementById('optShowPageNums').checked,
       frontMatter: document.getElementById('optFrontMatter').checked,
+      reviewFlags: document.getElementById('optReviewFlags').checked,
       sec1: document.getElementById('incSec1').checked,
       sec2: document.getElementById('incSec2').checked,
       sec3: document.getElementById('incSec3').checked
@@ -1982,10 +1991,59 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>`;
   }
 
+  /* Review flags in exports: open flags are wrapped in private-use sentinel characters before
+     compiling, so they survive page joins and chunking, then become marks with a ⚑n reference */
+  const FLAG_SENTINEL = /([a-z]+)(\d+)([\s\S]*?)/g;
+  const REVIEW_MARK_STYLE = {
+    ocr: 'background: #fee2e2; border-bottom: 2px solid #dc2626;',
+    print: 'background: #fef3c7; border-bottom: 2px solid #d97706;',
+    verify: 'background: #dbeafe; border-bottom: 2px dotted #2563eb;'
+  };
+
+  function markFlagsForExport(item, opts, review) {
+    const marked = { ...item };
+    (item.flags || []).forEach(f => {
+      if (!opts[f.section] || !isFlagOpen(item, f)) return;
+      const text = marked[f.section];
+      const at = text.indexOf(f.match);
+      if (at === -1) return;
+      const n = review.length + 1;
+      review.push({ n, item, f });
+      marked[f.section] = text.slice(0, at) + `${f.kind}${n}${f.match}` + text.slice(at + f.match.length);
+    });
+    return marked;
+  }
+
+  function reviewMarksHtml(html) {
+    return html.replace(FLAG_SENTINEL, (_, kind, n, word) =>
+      `<mark class="review-flag" data-kind="${kind}" style="${REVIEW_MARK_STYLE[kind] || ''} color: inherit;">${word}</mark><sup class="review-ref" style="color: #991b1b; font-size: 0.6em;">⚑${toDevanagariDigits(n)}</sup>`);
+  }
+
+  function reviewMarksPlain(text) {
+    return text.replace(FLAG_SENTINEL, (_, kind, n, word) => `${word}[⚑${n}]`);
+  }
+
+  // "Words to review" list closing a section: number, page, word → suggestion, kind and note
+  function reviewListBlocks(review) {
+    const html = [`<h3 class="book-notes-heading review-heading">⚑ समीक्षणीयानि पदानि (Words to Review)</h3>`];
+    const plain = ['⚑ समीक्षणीयानि पदानि (Words to Review)'];
+    review.forEach(({ n, item, f }) => {
+      const where = `${pageLabel(item)} (PDF ${item.page})${f.section === 'sec2' ? ' · पदच्छेदः' : ''}`;
+      const words = `<mark class="review-flag" data-kind="${f.kind}" style="${REVIEW_MARK_STYLE[f.kind] || ''} color: inherit;">${escapeHtml(f.match)}</mark>` +
+        (f.suggest ? ` → ${escapeHtml(f.suggest)}` : '');
+      html.push(`<p class="review-item"><span class="review-num">⚑${toDevanagariDigits(n)}</span> ${words} <span class="review-where">— ${escapeHtml(where)} · ${escapeHtml(FLAG_KIND_LABEL[f.kind] || f.kind)}</span><br><span class="review-note">${escapeHtml(f.note || '')}</span></p>`);
+      plain.push(`⚑${n} ${f.match}${f.suggest ? ' → ' + f.suggest : ''} — ${where} · ${FLAG_KIND_LABEL[f.kind] || f.kind}\n    ${f.note || ''}`);
+    });
+    return { html, plain };
+  }
+
   function compileSectionGroup(pages, opts) {
     // Continuous flow (paragraphs joined across page breaks) unless page numbers are shown or joining is off
     const continuous = opts.mergeHyphens && !opts.showPageNums;
     const plainBlocks = [], htmlBlocks = [];
+    const review = [];
+    if (opts.reviewFlags) pages = pages.map(item => markFlagsForExport(item, opts, review));
+    const fmt = p => reviewMarksHtml(typesetHtml(p));
 
     const renderPairs = pairs => {
       pairs.forEach(([s, d]) => {
@@ -1998,16 +2056,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           if (opts.sec1) {
             splitParagraphs(cs).forEach(p => {
               const layout = centred ? 'text-align: center; ' : (ci === 0 ? 'text-indent: 1.5em; ' : '');
-              html.push(`<p class="src-para" style="${layout}${opts.sec2 ? SRC_PARA_STYLE : ''}">${typesetHtml(p)}</p>`);
-              plain.push(p);
+              html.push(`<p class="src-para" style="${layout}${opts.sec2 ? SRC_PARA_STYLE : ''}">${fmt(p)}</p>`);
+              plain.push(reviewMarksPlain(p));
             });
           }
           // Skip the padaccheda where it repeats the source verbatim (e.g. श्रीः)
           if (opts.sec2 && !(opts.sec1 && normalizeSpace(cd) === normalizeSpace(cs))) {
             splitParagraphs(cd).forEach(p => {
               const style = centred ? PADA_CENTRED_STYLE : PADA_PARA_STYLE;
-              html.push(opts.sec1 ? `<p class="pada-para" style="${style}">${typesetHtml(p)}</p>` : `<p style="${centred ? 'text-align: center;' : ''}">${typesetHtml(p)}</p>`);
-              plain.push(opts.sec1 ? p.split('\n').map(line => '    ' + line).join('\n') : p);
+              html.push(opts.sec1 ? `<p class="pada-para" style="${style}">${fmt(p)}</p>` : `<p style="${centred ? 'text-align: center;' : ''}">${fmt(p)}</p>`);
+              const pp = reviewMarksPlain(p);
+              plain.push(opts.sec1 ? pp.split('\n').map(line => '    ' + line).join('\n') : pp);
             });
           }
         });
@@ -2058,6 +2117,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           plainBlocks.push(`सम्पादनटिप्पण्यः\n${item.sec3_md.trim()}`);
         }
       });
+    }
+
+    if (review.length) {
+      const list = reviewListBlocks(review);
+      htmlBlocks.push(...list.html);
+      plainBlocks.push(list.plain.join('\n'));
     }
 
     return {
@@ -2194,6 +2259,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     page-break-after: avoid;
   }
   .book-notes-page { font-size: 11pt; color: #9a3412; margin: 10pt 0 2pt 0; page-break-after: avoid; }
+  h3.review-heading { color: #991b1b; }
+  p.review-item { font-size: 12.5pt; line-height: 1.6; text-align: left; margin: 0 0 8pt 0; page-break-inside: avoid; }
+  .review-num { color: #991b1b; }
+  .review-where, .review-note { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 10pt; color: #57534e; }
   table {
     width: 100%;
     border-collapse: collapse;
@@ -2271,6 +2340,15 @@ ${bodyHtml}
       let extra = '';
       if (tag === 'strong' || tag === 'b') extra = '<w:b/><w:bCs/>';
       else if (tag === 'em' || tag === 'i') extra = '<w:i/><w:iCs/>';
+      else if (child.classList.contains('review-flag')) {
+        const look = { ocr: ['FEE2E2', 'wave', 'DC2626'], print: ['FEF3C7', 'wave', 'D97706'], verify: ['DBEAFE', 'dotted', '2563EB'] }[child.dataset.kind] || ['FEF3C7', 'single', 'D97706'];
+        extra = `<w:u w:val="${look[1]}" w:color="${look[2]}"/><w:shd w:val="clear" w:color="auto" w:fill="${look[0]}"/>`;
+      }
+      else if (child.classList.contains('review-ref')) extra = '<w:color w:val="991B1B"/><w:vertAlign w:val="superscript"/>';
+      else if (child.classList.contains('review-where') || child.classList.contains('review-note')) {
+        extra = `<w:rFonts w:ascii="${DOCX_LATIN_FONT}" w:hAnsi="${DOCX_LATIN_FONT}"/><w:color w:val="57534E"/><w:sz w:val="19"/><w:szCs w:val="19"/>`;
+      }
+      else if (child.classList.contains('review-num')) extra = '<w:color w:val="991B1B"/>';
       else if (child.classList.contains('key-gloss')) {
         extra = `<w:rFonts w:ascii="${DOCX_LATIN_FONT}" w:hAnsi="${DOCX_LATIN_FONT}"/><w:color w:val="57534E"/><w:sz w:val="20"/><w:szCs w:val="20"/>`;
       }
@@ -2365,7 +2443,9 @@ ${bodyHtml}
       } else if (tag === 'h3') {
         out.push(docxParagraph(cls.contains('book-notes-heading') ? 'NotesHeading' : 'Heading3', docxRuns(node), { bookmark: id }));
       } else if (tag === 'p') {
-        if (cls.contains('pada-para')) {
+        if (cls.contains('review-item')) {
+          out.push(docxParagraph('ReviewItem', docxRuns(node)));
+        } else if (cls.contains('pada-para')) {
           out.push(docxParagraph(centred ? 'PadacchedaCentred' : 'Padaccheda', docxRuns(node)));
         } else if (cls.contains('src-para')) {
           out.push(docxParagraph(ctx.english ? 'BodyEnglish' : 'SourceText', docxRuns(node),
@@ -2413,6 +2493,7 @@ ${para('TitleMeta', 'Title Meta', { pPr: '<w:spacing w:before="1440" w:after="0"
 ${para('TOCHeading', 'TOC Heading', { builtIn: true, pPr: '<w:spacing w:after="360"/><w:jc w:val="center"/>', rPr: size(44) + color(deep) })}
 ${para('TOC1', 'toc 1', { builtIn: true, pPr: `<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${DOCX_TEXT_WIDTH}"/></w:tabs><w:spacing w:before="240" w:after="60"/>`, rPr: size(28) + color(deep) })}
 ${para('TOC2', 'toc 2', { builtIn: true, pPr: `<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${DOCX_TEXT_WIDTH}"/></w:tabs><w:spacing w:after="60"/><w:ind w:left="360"/>`, rPr: size(28) })}
+${para('ReviewItem', 'Review Item', { pPr: '<w:keepLines/><w:spacing w:after="160" w:line="312" w:lineRule="auto"/><w:jc w:val="left"/>', rPr: size(24) })}
 ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:after="120"/>', rPr: size(24) + color(deep) })}
 <w:style w:type="character" w:styleId="Hyperlink"><w:name w:val="Hyperlink"/><w:rPr>${color('1E3A8A')}</w:rPr></w:style>
 </w:styles>`;
