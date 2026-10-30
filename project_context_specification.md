@@ -20,6 +20,7 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 
 ```text
 ~/ocr_bharata_sangrahaha/
+├── README.md                                  # Project overview and common tasks
 ├── .github/workflows/rebuild-site.yml         # Rebuilds index.html on GitHub when a page is saved
 ├── apps_script/Code.gs                        # Save backend (Google Apps Script): commits saves to GitHub + Drive backup
 ├── config/
