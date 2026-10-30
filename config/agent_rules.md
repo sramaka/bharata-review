@@ -20,6 +20,10 @@ When transcribing and processing page images from `page_images/`, produce a stru
 
 * Maintain clean Devanagari output with clear spacing between split words.
 
+* Keep the periphrastic perfect (आम्-प्रत्यय + अनुप्रयुक्त लिट् of अस् / कृ / भू) as **one word**. Do not split off the auxiliary. Hyphenate only an upasarga or compound member before it:
+  * `नियोजयामास` → `नि-योजयामास` (not `नि-योजयाम् आस`)
+  * `गमयामासुः`, `चकासामासतुः`, `पलायाञ्चक्रिरे`, `जागरांबभूव` stay whole.
+
 ### Section 3: Apparatus & Verification Table (सम्पादनटिप्पण्यः)
 
 Generate a structured table recording all textual flags, ambiguities, corrections, and sandhi details using these standard classification badges:
