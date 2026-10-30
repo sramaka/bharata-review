@@ -72,6 +72,18 @@
     flex: 1;
   }
   .toolbar-spacer { flex: 1; }
+  .review-count {
+    min-width: 92px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fca5a5;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .review-count.done { color: #86efac; }
+  @media (max-width: 1320px) { .btn-label { display: none; } }
+  @media (max-width: 1240px) and (min-width: 1025px) { .brand-area { display: none; } }
   .toolbar-group {
     display: flex;
     align-items: center;
@@ -891,6 +903,13 @@
       <button id="nextBtn" class="nav-btn" onclick="nextPage()">परम् ›</button>
     </div>
 
+    <!-- Review Navigation: previous / next word to review across the book -->
+    <div class="toolbar-group review-nav" title="समीक्षणीयपद-सञ्चालनम् (Previous / next word to review — Alt + ↑/↓)">
+      <button onclick="gotoReview(-1)" title="पूर्वं समीक्षणीयम् (Previous word to review — Alt + ↑)">‹ ⚑</button>
+      <span id="reviewCount" class="review-count">⚑ ०</span>
+      <button onclick="gotoReview(1)" title="अग्रिमं समीक्षणीयम् (Next word to review — Alt + ↓)">⚑ ›</button>
+    </div>
+
     <!-- Section Visibility Group -->
     <div class="toolbar-group" title="विभाग-दर्शनम् (Toggle Sections)">
       <button id="toggleSec2" class="section-toggle" onclick="toggleSection('sec2Box', 'toggleSec2')">+ पदच्छेदः</button>
@@ -900,7 +919,7 @@
     <div class="toolbar-spacer"></div>
 
     <button class="export-btn" onclick="openAllPagesModal()" title="सम्पूर्णं ग्रन्थं पश्यतु, प्रतिकुरुत, Word / PDF वा अवतारयतु (View, Copy, or Download Complete Book in Word / PDF)">
-      📖 सम्पूर्णः ग्रन्थः
+      📖 <span class="btn-label">सम्पूर्णः ग्रन्थः</span>
     </button>
 
     <!-- Display settings & copy actions -->
@@ -1109,6 +1128,7 @@
   const sec1Backdrop = document.getElementById('sec1Backdrop');
   const sec2Backdrop = document.getElementById('sec2Backdrop');
   const flagPanel = document.getElementById('flagPanel');
+  const reviewCount = document.getElementById('reviewCount');
   const flagTitle = document.getElementById('flagTitle');
   const flagList = document.getElementById('flagList');
   const pagePdfNum = document.getElementById('pagePdfNum');
@@ -1258,6 +1278,7 @@
       }).join('');
     }
     refreshPageOption(currentIndex);
+    updateReviewCount();
   }
 
   function flagEditor(f) {
@@ -1310,17 +1331,90 @@
     if (!settingsMenu.hidden && !settingsWrap.contains(e.target)) toggleSettings(false);
   });
 
+  function ensureBaseline(item) {
+    if (item.baseline !== undefined) return;
+    item.baseline = item.orig_sec1 !== undefined ? item.orig_sec1 : item.sec1;
+    item.sec2Baseline = item.orig_sec2 !== undefined ? item.orig_sec2 : item.sec2;
+    // A page the scholar already saved opens as saved (its tags come back from the saved log)
+    if (item.verified) item.savedSnapshot = buildSavedMarkdown(item).content;
+  }
+
+  /* ---------- Navigation through words to review ----------
+     Targets are open review flags and padaccheda sentences whose source was corrected but
+     which still need updating, in book order: page, then मूलपाठः before पदच्छेदः, then position. */
+  let reviewCursor = null;
+
+  function reviewTargets(idx) {
+    const item = data[idx];
+    ensureBaseline(item);
+    const targets = [];
+    (item.flags || []).forEach(f => {
+      const at = (item[f.section] || '').indexOf(f.match);
+      if (at !== -1) targets.push({ idx, sec: f.section, start: at, end: at + f.match.length });
+    });
+    if (item.sec1 !== item.baseline) {
+      pageChanges(item).staleRanges.forEach(r => targets.push({ idx, sec: 'sec2', start: r.start, end: r.end }));
+    }
+    const rank = t => [t.idx, t.sec === 'sec1' ? 0 : 1, t.start];
+    const seen = new Set();
+    return targets.filter(t => { const k = `${t.sec}|${t.start}`; if (seen.has(k)) return false; seen.add(k); return true; })
+      .sort((a, b) => compareRank(rank(a), rank(b)));
+  }
+
+  function compareRank(a, b) {
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
+    return 0;
+  }
+
+  function allReviewTargets() {
+    return data.flatMap((_, idx) => reviewTargets(idx));
+  }
+
+  function updateReviewCount() {
+    const all = allReviewTargets();
+    let label = `⚑ ${toDevanagariDigits(all.length)}`;
+    if (reviewCursor && all.length) {
+      const pos = all.findIndex(t => t.idx === reviewCursor.idx && t.sec === reviewCursor.sec && t.start === reviewCursor.start);
+      if (pos !== -1) label = `⚑ ${toDevanagariDigits(pos + 1)} / ${toDevanagariDigits(all.length)}`;
+    }
+    reviewCount.innerText = all.length ? label : '✔ ०';
+    reviewCount.classList.toggle('done', !all.length);
+    reviewCount.title = all.length
+      ? `${all.length} word(s) or padaccheda sentence(s) still to review in the book`
+      : 'समीक्षणीयं नास्ति (Nothing left to review)';
+  }
+
+  function gotoReview(dir) {
+    const all = allReviewTargets();
+    if (!all.length) {
+      showToast('✔ समीक्षणीयं नास्ति (Nothing left to review)');
+      updateReviewCount();
+      return;
+    }
+    const rank = t => [t.idx, t.sec === 'sec1' ? 0 : 1, t.start];
+    // Without a cursor, start from the top (next) or bottom (previous) of the current page
+    const cur = reviewCursor ? rank(reviewCursor) : (dir > 0 ? [currentIndex, -1, -1] : [currentIndex, 2, Infinity]);
+    let target = dir > 0
+      ? all.find(t => compareRank(rank(t), cur) > 0)
+      : [...all].reverse().find(t => compareRank(rank(t), cur) < 0);
+    if (!target) target = dir > 0 ? all[0] : all[all.length - 1];   // wrap around the book
+
+    if (target.idx !== currentIndex) switchPage(target.idx);
+    reviewCursor = target;
+    if (target.sec === 'sec2' && !document.getElementById('sec2Box').classList.contains('visible')) {
+      toggleSection('sec2Box', 'toggleSec2');
+    }
+    jumpToChange(target.start, target.end, target.sec === 'sec2' ? sec2Editor : sec1Editor);
+    updateReviewCount();
+  }
+
   function switchPage(idx) {
     currentIndex = parseInt(idx, 10);
     select.value = currentIndex;
     const item = data[currentIndex];
 
-    if (item.baseline === undefined) {
-      item.baseline = item.orig_sec1 !== undefined ? item.orig_sec1 : item.sec1;
-      item.sec2Baseline = item.orig_sec2 !== undefined ? item.orig_sec2 : item.sec2;
-      // A page the scholar already saved opens as saved (its tags come back from the saved log)
-      if (item.verified) item.savedSnapshot = buildSavedMarkdown(item).content;
-    }
+    ensureBaseline(item);
+    if (reviewCursor && reviewCursor.idx !== currentIndex) reviewCursor = null;
 
     pageImg.src = item.img;
     // Warm the cache for the next scan so page turns feel instant
@@ -2860,6 +2954,8 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
     }
     if (e.altKey && e.key === 'ArrowLeft') prevPage();
     if (e.altKey && e.key === 'ArrowRight') nextPage();
+    if (e.altKey && e.key === 'ArrowDown') { e.preventDefault(); gotoReview(1); }
+    if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); gotoReview(-1); }
   });
 
   /* Movable Split Pane Resizer Logic */
