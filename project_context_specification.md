@@ -34,7 +34,8 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 │   ├── extract_pages.py                       # PyMuPDF extractor: extract_pages.py START END [--dpi N]
 │   ├── build_html_review.py                   # Builds index.html + page_web/ from output/raw/ and page images
 │   ├── local_review_and_direct_save_server.py # Local HTTP server (port 8000) with POST /save_verified → output/verified/
-│   └── collect_corrections.py                 # Correction logs in output/verified/ → output/corrections/ (AI feedback)
+│   ├── collect_corrections.py                 # Correction logs in output/verified/ → output/corrections/ (AI feedback)
+│   └── padaccheda_worklist.py                 # Sentences whose source was corrected → padaccheda to regenerate
 ├── index.html                                 # GitHub Pages portal, written by build_html_review.py (text only, ~0.4 MB)
 ├── page_web/                                  # Committed 1600px grayscale JPEG scans (~250 KB each) loaded by index.html
 ├── project_context_specification.md           # Project architecture and instructions (this file)
@@ -91,7 +92,12 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
   - Each change can carry a short note.
   - On save, the page gets a `## ४. संशोधनलेखः (Correction Log)` table: number, section, kind, before, after, context, source (reviewer / AI flag accepted) and note. The save payload also carries the same entries as a `log` array, with `saved_at`.
   - Misprints are not silently emended: the saved मूलपाठः keeps the printed reading, and the correction is appended to the Section 3 apparatus as a `⚠️ मुद्रणदोषः` row.
-  - The builder ignores Section 4 when reading pages. Tags and notes are kept for the browser session only, like the edits themselves.
+  - The builder ignores Section 4 when reading the page text, but uses it to restore tags, notes and padaccheda status when the page reopens. Misprint entries are carried forward on later saves.
+- **Saved Pages Reopen as Saved:** when `output/verified/page_XXX.md` exists (override with `--verified-dir`), the builder shows it instead of the raw OCR. The raw OCR stays as the baseline, so the proof marks and the log still cover every change since the OCR, and the page opens with status `✔ रक्षितम्`.
+- **Padaccheda Follow-up:** Section 2 is never regenerated automatically.
+  - For each Section 1 change, the app finds the matching Section 2 sentence by danda count. Every page has matching danda counts in Sections 1 and 2.
+  - Each change shows one of three padaccheda statuses: `⚠ पदच्छेदः अद्यतनीयः` (needs updating; the Section 2 sentence gets an orange dashed highlight, with **दर्शयतु** to jump to it and **यथावत्** to confirm it is still correct), `✔ अद्यतितः` (the reviewer edited that Section 2 sentence), or `✔ यथावत्` (confirmed).
+  - The status is saved in the log's `पदच्छेदः` column. If the danda counts don't line up, the change is flagged without a highlight.
 - **Review Flags:** `output/review_flags.json` lists words that need the scholar's attention, keyed by PDF page.
   - Each entry has: `section` (`sec1`/`sec2`), the exact `match` text, an optional `suggest` replacement, a `kind`, and a `note`.
   - There are three kinds: `ocr` (transcription differs from the scan; red wavy highlight), `print` (matches the scan but is probably a misprint; amber), and `verify` (unclear in the scan; blue dotted).
@@ -167,5 +173,14 @@ python3 scripts/collect_corrections.py        # → output/corrections/correctio
 ```
 `summary.md` groups the logged changes by kind (OCR errors, padaccheda errors, misprints) with recurring character-level patterns (e.g. `श` → `ञ`). `config/agent_rules.md` tells the transcription agent to read it before transcribing.
 
-### F. Syncing Verified Files from Scholar
+### F. Regenerating Padaccheda after Source Corrections
+```bash
+python3 scripts/padaccheda_worklist.py         # → output/corrections/padaccheda_worklist.md + padaccheda_flags.json
+# agent: write the new padaccheda for each listed sentence into "suggest" in padaccheda_flags.json
+python3 scripts/padaccheda_worklist.py --merge output/corrections/padaccheda_flags.json
+venv/bin/python scripts/build_html_review.py   # the suggestions appear as purple "नवः पदच्छेदः" review flags
+```
+The worklist lists sentences whose मूलपाठः the scholar corrected while the padaccheda was neither edited nor confirmed. Merged suggestions are `kind: "pada"` review flags on Section 2, which the scholar accepts in the portal.
+
+### G. Syncing Verified Files from Scholar
 Scholar edits land in Google Drive folder `bharata_verified_pages/`. Verified pages are periodically pulled down into `output/verified/` for archival and downstream corpus generation. This step is manual, and `output/verified/` is currently empty.

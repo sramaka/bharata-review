@@ -71,3 +71,11 @@ Before transcribing, read `output/corrections/summary.md` if it exists. It is bu
 * **OCR errors**: character-level patterns you misread before (for example `श्च` where the print has `ञ्च`, or a candrabindu typed for a printed anusvāra). Check every occurrence of these shapes against the scan.
 * **Padaccheda errors**: splits the scholar corrected. Apply the same splitting to similar forms.
 * **Misprints**: errors in the printed book itself. Transcribe them as printed in Section 1 and record the correction in Section 3 with `⚠️ मुद्रणदोषः`.
+
+## Regenerating Padaccheda after Source Corrections
+
+When asked to update padaccheda after the scholar's corrections, run `python3 scripts/padaccheda_worklist.py` and read `output/corrections/padaccheda_worklist.md`. For each listed sentence:
+
+* Write the padaccheda of the **corrected source** sentence, following Section 2 rules above. Keep the same dandas and the same sentence boundaries, and keep the parts of the current padaccheda that are still correct.
+* If the current padaccheda already fits the corrected source, leave `suggest` empty (nothing is proposed).
+* Put the new sentence in the matching entry's `suggest` in `output/corrections/padaccheda_flags.json`, then run `python3 scripts/padaccheda_worklist.py --merge output/corrections/padaccheda_flags.json` and rebuild the portal.

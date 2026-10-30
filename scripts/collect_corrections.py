@@ -18,56 +18,20 @@ import glob
 import json
 import os
 import re
+import sys
 
-CATEGORY_BY_BADGE = {
-    "🔍 OCR-दोषः": "ocr",
-    "⚠️ मुद्रणदोषः": "misprint",
-    "✂️ पदच्छेददोषः": "pada",
-    "✏️ अन्यत्": "other",
-}
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from build_html_review import parse_correction_log  # noqa: E402
+
 CATEGORY_TITLES = {
     "ocr": "OCR errors (transcription did not match the scan)",
     "misprint": "Misprints in the printed book",
     "pada": "Padaccheda errors (AI sandhi / compound splitting)",
     "other": "Other edits",
 }
-SECTION_BY_LABEL = {"मूलपाठः": "sec1", "पदच्छेदः": "sec2"}
-DEV_TO_ASCII = str.maketrans("०१२३४५६७८९", "0123456789")
-
-
-def cell(text):
-    text = text.strip()
-    return "" if text == "∅" else text.replace(" ↵ ", "\n")
-
-
 def parse_log(md_text):
     """Return the rows of the correction log table in one saved page."""
-    lines = md_text.splitlines()
-    try:
-        start = next(i for i, l in enumerate(lines) if "४. संशोधनलेख" in l)
-    except StopIteration:
-        return []
-    rows = []
-    for line in lines[start + 1:]:
-        s = line.strip()
-        if s.startswith("## "):
-            break
-        if not (s.startswith("|") and s.endswith("|")) or re.match(r"^\|[\s\-:|]+\|$", s):
-            continue
-        cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) < 8 or cells[0] == "सङ्ख्या":
-            continue
-        rows.append({
-            "n": int(cells[0].translate(DEV_TO_ASCII) or 0),
-            "section": SECTION_BY_LABEL.get(cells[1], cells[1]),
-            "category": CATEGORY_BY_BADGE.get(cells[2], "other"),
-            "before": cell(cells[3]),
-            "after": cell(cells[4]),
-            "context": cells[5],
-            "source": "ai" if cells[6].startswith("AI") else "reviewer",
-            "note": cells[7],
-        })
-    return rows
+    return parse_correction_log(md_text)
 
 
 def substitution_pairs(before, after):
@@ -97,9 +61,9 @@ def write_summary(entries, path):
             out += ["Recurring character-level patterns (printed/AI form → corrected):", ""]
             out += [f"- `{a}` → `{b}` ({n}×)" for (a, b), n in patterns.most_common(15)]
             out.append("")
-        out += ["| Page | Before | After | Context | Source | Note |", "| :--- | :--- | :--- | :--- | :--- | :--- |"]
+        out += ["| Page | Before | After | Context | Source | Note | Padaccheda |", "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |"]
         for e in items:
-            out.append(f"| {e['page']} | {e['before'] or '∅'} | {e['after'] or '∅'} | {e['context']} | {e['source']} | {e['note']} |")
+            out.append(f"| {e['page']} | {e['before'] or '∅'} | {e['after'] or '∅'} | {e['context']} | {e['source']} | {e['note']} | {e.get('pada', '')} |")
         out.append("")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(out))

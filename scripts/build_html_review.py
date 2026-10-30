@@ -8,6 +8,8 @@ import argparse
 
 PAGE_IMAGES = "page_images"
 RAW_DIR = "output/raw"
+# Pages saved by the scholar; when present they are shown instead of the raw OCR
+VERIFIED_DIR = "output/verified"
 
 # Deployed site: index.html at the repo root loads page scans from WEB_IMAGE_DIR on demand
 SITE_HTML = "index.html"
@@ -100,6 +102,45 @@ def build_table(rows):
         table_html.append("<tr>" + "".join(f"<td>{clean_inline(c)}</td>" for c in cells) + "</tr>")
     table_html.append("</tbody></table></div>")
     return "\n".join(table_html)
+
+CORRECTION_CATEGORY_BY_BADGE = {
+    "🔍 OCR-दोषः": "ocr",
+    "⚠️ मुद्रणदोषः": "misprint",
+    "✂️ पदच्छेददोषः": "pada",
+    "✏️ अन्यत्": "other",
+}
+CORRECTION_SECTION_BY_LABEL = {"मूलपाठः": "sec1", "पदच्छेदः": "sec2"}
+PADA_STATUS_BY_LABEL = {"✔ अद्यतितः": "updated", "✔ यथावत्": "confirmed", "⚠ अद्यतनीयः": "stale"}
+
+def parse_correction_log(md_text):
+    """Rows of the '४. संशोधनलेखः (Correction Log)' table written by the portal on save."""
+    lines = md_text.splitlines()
+    start = next((i for i, l in enumerate(lines) if "४. संशोधनलेख" in l), None)
+    if start is None:
+        return []
+    unescape = lambda t: "" if t.strip() == "∅" else t.strip().replace(" ↵ ", "\n")
+    rows = []
+    for line in lines[start + 1:]:
+        s = line.strip()
+        if s.startswith("## "):
+            break
+        if not (s.startswith("|") and s.endswith("|")) or re.match(r"^\|[\s\-:|]+\|$", s):
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) < 8 or cells[0] == "सङ्ख्या":
+            continue
+        rows.append({
+            "n": int(cells[0].translate(str.maketrans("०१२३४५६७८९", "0123456789")) or 0),
+            "section": CORRECTION_SECTION_BY_LABEL.get(cells[1], cells[1]),
+            "category": CORRECTION_CATEGORY_BY_BADGE.get(cells[2], "other"),
+            "before": unescape(cells[3]),
+            "after": unescape(cells[4]),
+            "context": cells[5],
+            "source": "ai" if cells[6].startswith("AI") else "reviewer",
+            "note": cells[7],
+            "pada": PADA_STATUS_BY_LABEL.get(cells[8], "") if len(cells) > 8 else "",
+        })
+    return rows
 
 def parse_sections(raw_md):
     lines = raw_md.splitlines()
@@ -593,6 +634,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   mark.flag { color: transparent; border-radius: 3px; padding: 0; text-decoration-skip-ink: none; text-underline-offset: 0.3em; }
   mark.flag-ocr { background: rgba(239, 68, 68, 0.16); text-decoration: underline wavy #dc2626; }
   mark.flag-print { background: rgba(245, 158, 11, 0.22); text-decoration: underline wavy #d97706; }
+  mark.flag-pada { background: rgba(147, 51, 234, 0.12); text-decoration: underline wavy #9333ea; }
+  mark.flag-stale { background: rgba(249, 115, 22, 0.13); text-decoration: underline dashed #ea580c; text-decoration-thickness: 2px; }
   mark.flag-verify { background: rgba(59, 130, 246, 0.14); text-decoration: underline dotted #2563eb; text-decoration-thickness: 2px; }
 
   .flag-panel { border-left: 4px solid #dc2626; }
@@ -601,6 +644,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .legend-ocr::before { background: #fca5a5; }
   .legend-print::before { background: #fcd34d; }
   .legend-verify::before { background: #93c5fd; }
+  .legend-pada::before { background: #d8b4fe; }
   .flag-list { display: flex; flex-direction: column; gap: 8px; }
   .flag-item {
     border: 1px solid #e7e5e4;
@@ -617,6 +661,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .kind-ocr .flag-kind { background: #fee2e2; color: #991b1b; }
   .kind-print .flag-kind { background: #fef3c7; color: #92400e; }
   .kind-verify .flag-kind { background: #dbeafe; color: #1e40af; }
+  .kind-pada .flag-kind { background: #f3e8ff; color: #6b21a8; }
+  .pada-status { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
+  .pada-status.stale { color: #c2410c; }
+  .pada-status.ok { color: #166534; }
+  .pada-status button { min-height: 28px; padding: 2px 10px; font-size: 12.5px; }
   .flag-words { font-family: var(--font-family); font-size: 1.15em; }
   .flag-match { color: #991b1b; }
   .flag-suggest { color: #166534; }
@@ -1106,6 +1155,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <span class="legend-ocr">पाठभेदः (differs from scan)</span>
           <span class="legend-print">मुद्रणदोषः? (possible misprint)</span>
           <span class="legend-verify">परीक्षणीयम् (please verify)</span>
+          <span class="legend-pada">नवः पदच्छेदः (updated padaccheda)</span>
         </span>
       </div>
       <div id="flagList" class="flag-list"></div>
@@ -1325,6 +1375,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   /* ---------- Review flags ---------- */
   const FLAG_KIND_LABEL = {
+    pada: 'नवः पदच्छेदः (Updated padaccheda)',
     ocr: 'पाठभेदः (Differs from scan)',
     print: 'मुद्रणदोषः? (Possible misprint)',
     verify: 'परीक्षणीयम् (Please verify)'
@@ -1366,6 +1417,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const marks = [];
       flags.filter(f => f.section === sec).forEach(f =>
         flagRanges(text, f.match).forEach(([start, end]) => marks.push({ start, end, kind: f.kind })));
+      // Padaccheda sentences whose source was corrected but which have not been updated yet
+      if (sec === 'sec2') currentStaleRanges.forEach(r => marks.push({ start: r.start, end: r.end, kind: 'stale' }));
       backdrop.innerHTML = backdropHtml(text, marks);
     });
 
@@ -1448,8 +1501,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const item = data[currentIndex];
 
     if (item.baseline === undefined) {
-      item.baseline = item.sec1;
-      item.sec2Baseline = item.sec2;
+      item.baseline = item.orig_sec1 !== undefined ? item.orig_sec1 : item.sec1;
+      item.sec2Baseline = item.orig_sec2 !== undefined ? item.orig_sec2 : item.sec2;
+      // A page the scholar already saved opens as saved (its tags come back from the saved log)
+      if (item.verified) item.savedSnapshot = buildSavedMarkdown(item).content;
     }
 
     pageImg.src = item.img;
@@ -1645,14 +1700,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   // Group consecutive changed tokens into hunks; hunkOf[k] is the hunk index of op k
   function computeHunks(ops) {
+    // start/end are offsets in the edited text, baseStart/baseEnd in the original
     const hunks = [], hunkOf = [];
-    let pos = 0, hunk = null;
+    let pos = 0, basePos = 0, hunk = null;
     ops.forEach(([op, tok], k) => {
-      if (op === '=') { hunk = null; pos += tok.length; return; }
-      if (!hunk) { hunk = { first: k, last: k, del: '', ins: '', start: pos, end: pos }; hunks.push(hunk); }
+      if (op === '=') { hunk = null; pos += tok.length; basePos += tok.length; return; }
+      if (!hunk) { hunk = { first: k, last: k, del: '', ins: '', start: pos, end: pos, baseStart: basePos, baseEnd: basePos }; hunks.push(hunk); }
       hunkOf[k] = hunks.length - 1;
       hunk.last = k;
-      if (op === '-') hunk.del += tok;
+      if (op === '-') { hunk.del += tok; basePos += tok.length; hunk.baseEnd = basePos; }
       else { hunk.ins += tok; pos += tok.length; hunk.end = pos; }
     });
     return { hunks, hunkOf };
@@ -1670,10 +1726,28 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     return sec === 'sec2' ? 'pada' : 'ocr';
   }
 
+  // Sentence spans (ending in a danda) with offsets; source and padaccheda have matching dandas
+  function sentenceSpans(text) {
+    const spans = [], re = /[^।॥]*[।॥]+[’'"”]*\s*|[^।॥]+$/g;
+    let m;
+    while ((m = re.exec(text || '')) && m[0].length) spans.push({ start: m.index, end: m.index + m[0].length });
+    return spans;
+  }
+
+  function sameText(a, b) {
+    return normalizeSpace(a) === normalizeSpace(b);
+  }
+
+  // Tag, note, source and padaccheda status recorded for a change the last time the page was saved
+  function savedLogEntry(item, sec, h) {
+    return (item.saved_log || []).find(e => e.section === sec && sameText(e.before, h.del) && sameText(e.after, h.ins));
+  }
+
   function pageChanges(item) {
     const result = {};
     item.changeTags = item.changeTags || {};
     item.changeNotes = item.changeNotes || {};
+    item.padaConfirmed = item.padaConfirmed || {};
     [['sec1', 'baseline'], ['sec2', 'sec2Baseline']].forEach(([sec, baseKey]) => {
       const base = item[baseKey], text = item[sec] || '';
       if (base === undefined || base === text) { result[sec] = { ops: [], hunks: [], hunkOf: [], changes: [] }; return; }
@@ -1685,30 +1759,79 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         seen[id] = (seen[id] || 0) + 1;
         const key = `${id}|${seen[id]}`;
         const flag = acceptedFlagFor(item, sec, h);
-        const tag = item.changeTags[key];
+        const saved = savedLogEntry(item, sec, h);
+        const tag = item.changeTags[key] || (saved && saved.category);
+        if (saved && saved.pada === 'confirmed' && item.padaConfirmed[key] === undefined) item.padaConfirmed[key] = true;
         return {
           sec, key, hunk: h, hunkIndex: hi,
-          category: tag && CHANGE_CATEGORIES[tag].secs.includes(sec) ? tag : defaultCategory(sec, h, flag),
-          source: flag ? 'ai' : 'reviewer',
-          note: item.changeNotes[key] || '',
+          category: tag && CHANGE_CATEGORIES[tag] && CHANGE_CATEGORIES[tag].secs.includes(sec) ? tag : defaultCategory(sec, h, flag),
+          source: flag || (saved && saved.source === 'ai') ? 'ai' : 'reviewer',
+          note: item.changeNotes[key] !== undefined ? item.changeNotes[key] : (saved ? saved.note : ''),
           before: contextText(ops, h.first - 1, -1),
           after: contextText(ops, h.last + 1, 1)
         };
       });
       result[sec] = { ops, hunks, hunkOf, changes };
     });
+    markPadacchedaStatus(item, result);
     return result;
+  }
+
+  // For each source change, find the padaccheda sentence(s) it belongs to (by danda count) and
+  // decide whether that padaccheda was updated, confirmed as still correct, or still needs updating
+  function markPadacchedaStatus(item, result) {
+    result.staleRanges = [];
+    if (!item.sec2Baseline) return;
+    const srcSpans = sentenceSpans(item.baseline);
+    const padaBase = sentenceSpans(item.sec2Baseline), padaCur = sentenceSpans(item.sec2 || '');
+    const aligned = srcSpans.length === padaBase.length;
+    const curAligned = aligned && padaCur.length === padaBase.length;
+    result.sec1.changes.forEach(c => {
+      const h = c.hunk;
+      if (!h.del.trim() && !h.ins.trim()) { c.pada = null; return; }   // spacing only
+      if (!aligned) {
+        c.pada = { status: item.padaConfirmed[c.key] ? 'confirmed' : 'unknown', ranges: [] };
+        return;
+      }
+      const end = Math.max(h.baseEnd, h.baseStart + 1);
+      const idx = srcSpans.map((s, i) => (s.start < end && s.end > h.baseStart) ? i : -1).filter(i => i !== -1);
+      if (!idx.length) idx.push(srcSpans.length - 1);
+      let updated;
+      if (curAligned) {
+        updated = idx.some(i => !sameText(item.sec2Baseline.slice(padaBase[i].start, padaBase[i].end),
+                                         item.sec2.slice(padaCur[i].start, padaCur[i].end)));
+      } else {
+        updated = (item.sec2 || '') !== item.sec2Baseline;
+      }
+      const ranges = curAligned ? idx.map(i => ({ start: padaCur[i].start, end: padaCur[i].end })) : [];
+      const status = updated ? 'updated' : (item.padaConfirmed[c.key] ? 'confirmed' : (curAligned ? 'stale' : 'unknown'));
+      c.pada = { status, ranges };
+      if (status === 'stale') result.staleRanges.push(...ranges);
+    });
+  }
+
+  let currentStaleRanges = [];
+
+  function padaStatusHtml(c, i) {
+    if (!c.pada) return '';
+    if (c.pada.status === 'updated') return '<span class="pada-status ok">✔ पदच्छेदः अद्यतितः (padaccheda updated)</span>';
+    if (c.pada.status === 'confirmed') return `<span class="pada-status ok">✔ पदच्छेदः यथावत् (padaccheda confirmed) <button class="light-btn" onclick="confirmPada(${i}, false)">↺</button></span>`;
+    const show = c.pada.ranges.length ? `<button class="light-btn" onclick="jumpToPada(${i})">दर्शयतु (Show)</button>` : '';
+    return `<span class="pada-status stale">⚠ पदच्छेदः अद्यतनीयः (padaccheda may need updating) ${show}<button class="light-btn" onclick="confirmPada(${i}, true)">यथावत् (Still correct)</button></span>`;
   }
 
   function refreshProofPanel() {
     const item = data[currentIndex];
     const pc = pageChanges(item);
     currentChanges = [...pc.sec1.changes, ...pc.sec2.changes];
+    currentStaleRanges = pc.staleRanges;
     proofPanel.hidden = !currentChanges.length;
     if (!currentChanges.length) return;
 
     const n = currentChanges.length;
-    proofTitle.innerText = `दृष्टं शोधनम् — ${toDevanagariDigits(n)} परिवर्तन${n === 1 ? 'म्' : 'ानि'} (${n} change${n === 1 ? '' : 's'})`;
+    const stale = currentChanges.filter(c => c.pada && (c.pada.status === 'stale' || c.pada.status === 'unknown')).length;
+    proofTitle.innerText = `दृष्टं शोधनम् — ${toDevanagariDigits(n)} परिवर्तन${n === 1 ? 'म्' : 'ानि'} (${n} change${n === 1 ? '' : 's'})` +
+      (stale ? ` · ⚠ ${toDevanagariDigits(stale)} पदच्छेदः अद्यतनीयः` : '');
 
     proofList.innerHTML = currentChanges.map((c, i) => {
       const h = c.hunk;
@@ -1725,6 +1848,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <select onchange="setChangeTag(${i}, this.value)" title="दोषप्रकारः (Kind of error)">${options}</select>
           <input class="change-note" type="text" value="${escapeHtml(c.note).replace(/"/g, '&quot;')}" placeholder="टिप्पणी (optional note, e.g. ञ्च read as श्च)" oninput="setChangeNote(${i}, this.value)">
           ${hint}
+          ${padaStatusHtml(c, i)}
         </div>
       </div>`;
     }).join('');
@@ -1738,6 +1862,21 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       .map(([sec, label]) => `<div class="proof-full-label">${label}</div>${fullHtml(pc[sec].ops)}`).join('\n');
 
     applyProofView();
+  }
+
+  function confirmPada(i, confirmed) {
+    const c = currentChanges[i];
+    data[currentIndex].padaConfirmed[c.key] = confirmed;
+    refreshProofPanel();
+    renderFlags();
+    updateStatus();
+  }
+
+  function jumpToPada(i) {
+    const r = currentChanges[i].pada.ranges[0];
+    if (!r) return;
+    if (!document.getElementById('sec2Box').classList.contains('visible')) toggleSection('sec2Box', 'toggleSec2');
+    jumpToChange(r.start, r.end, sec2Editor);
   }
 
   function setChangeTag(i, value) {
@@ -1793,9 +1932,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     return lines.join('\n');
   }
 
-  function changeLogEntries(pc) {
-    return [...pc.sec1.changes, ...pc.sec2.changes].map((c, i) => ({
-      n: i + 1,
+  function changeLogEntries(pc, item) {
+    const entries = [...pc.sec1.changes, ...pc.sec2.changes].map(c => ({
       section: c.sec,
       category: c.category,
       before: c.hunk.del,
@@ -1803,16 +1941,29 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       context_before: c.before,
       context_after: c.after,
       source: c.source,
-      note: c.note
+      note: c.note,
+      pada: c.pada ? (c.pada.status === 'unknown' ? 'stale' : c.pada.status) : ''
     }));
+    // Misprints saved earlier keep the printed reading, so they no longer show up as changes:
+    // carry their log entries forward from the saved log
+    (item.saved_log || []).filter(e => e.category === 'misprint' &&
+      !pc.sec1.changes.some(c => sameText(c.hunk.del, e.before) && sameText(c.hunk.ins, e.after)))
+      .forEach(e => {
+        const m = (e.context || '').match(/^…(.*?) \[.*\] (.*?)…$/);
+        entries.push({ section: 'sec1', category: 'misprint', before: e.before, after: e.after,
+          context_before: m ? m[1] : '', context_after: m ? m[2] : '', source: e.source, note: e.note, pada: e.pada || '' });
+      });
+    return entries.map((e, i) => ({ n: i + 1, ...e }));
   }
+
+  const PADA_STATUS_LABEL = { updated: '✔ अद्यतितः', confirmed: '✔ यथावत्', stale: '⚠ अद्यतनीयः' };
 
   function logTableMarkdown(entries) {
     const rows = entries.map(e =>
-      `| ${toDevanagariDigits(e.n)} | ${SEC_LABEL[e.section]} | ${CHANGE_CATEGORIES[e.category].badge} | ${mdCell(e.before)} | ${mdCell(e.after)} | …${mdCell(e.context_before)} [${mdCell(e.before)} → ${mdCell(e.after)}] ${mdCell(e.context_after)}… | ${SOURCE_LABEL[e.source]} | ${e.note ? mdCell(e.note) : ''} |`);
+      `| ${toDevanagariDigits(e.n)} | ${SEC_LABEL[e.section]} | ${CHANGE_CATEGORIES[e.category].badge} | ${mdCell(e.before)} | ${mdCell(e.after)} | …${mdCell(e.context_before)} [${mdCell(e.before)} → ${mdCell(e.after)}] ${mdCell(e.context_after)}… | ${SOURCE_LABEL[e.source]} | ${e.note ? mdCell(e.note) : ''} | ${PADA_STATUS_LABEL[e.pada] || ''} |`);
     return ['## ४. संशोधनलेखः (Correction Log)', '',
-      '| सङ्ख्या | विभागः | प्रकारः | पूर्वपाठः | संशोधितः पाठः | सन्दर्भः | स्रोतः | टिप्पणी |',
-      '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |', ...rows].join('\n') + '\n';
+      '| सङ्ख्या | विभागः | प्रकारः | पूर्वपाठः | संशोधितः पाठः | सन्दर्भः | स्रोतः | टिप्पणी | पदच्छेदः |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |', ...rows].join('\n') + '\n';
   }
 
   // The page as saved: misprints kept as printed (and noted in Section 3), plus the correction log
@@ -1825,7 +1976,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       sec3 = appendApparatusRows(sec3, misprints);
     }
     const md = buildPageMarkdown({ ...item, sec1, sec3_md: sec3 });
-    const log = changeLogEntries(pc);
+    const log = changeLogEntries(pc, item);
     return { content: log.length ? md + '\n' + logTableMarkdown(log) : md, log };
   }
 
@@ -2201,7 +2352,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   const REVIEW_MARK_STYLE = {
     ocr: 'background: #fee2e2; border-bottom: 2px solid #dc2626;',
     print: 'background: #fef3c7; border-bottom: 2px solid #d97706;',
-    verify: 'background: #dbeafe; border-bottom: 2px dotted #2563eb;'
+    verify: 'background: #dbeafe; border-bottom: 2px dotted #2563eb;',
+    pada: 'background: #f3e8ff; border-bottom: 2px solid #9333ea;'
   };
 
   function markFlagsForExport(item, opts, review) {
@@ -2545,7 +2697,7 @@ ${bodyHtml}
       if (tag === 'strong' || tag === 'b') extra = '<w:b/><w:bCs/>';
       else if (tag === 'em' || tag === 'i') extra = '<w:i/><w:iCs/>';
       else if (child.classList.contains('review-flag')) {
-        const look = { ocr: ['FEE2E2', 'wave', 'DC2626'], print: ['FEF3C7', 'wave', 'D97706'], verify: ['DBEAFE', 'dotted', '2563EB'] }[child.dataset.kind] || ['FEF3C7', 'single', 'D97706'];
+        const look = { ocr: ['FEE2E2', 'wave', 'DC2626'], print: ['FEF3C7', 'wave', 'D97706'], verify: ['DBEAFE', 'dotted', '2563EB'], pada: ['F3E8FF', 'wave', '9333EA'] }[child.dataset.kind] || ['FEF3C7', 'single', 'D97706'];
         extra = `<w:u w:val="${look[1]}" w:color="${look[2]}"/><w:shd w:val="clear" w:color="auto" w:fill="${look[0]}"/>`;
       }
       else if (child.classList.contains('review-ref')) extra = '<w:color w:val="991B1B"/><w:vertAlign w:val="superscript"/>';
@@ -2944,7 +3096,7 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
 </body>
 </html>"""
 
-def generate_viewer(standalone=False):
+def generate_viewer(standalone=False, verified_dir=VERIFIED_DIR):
     md_files = sorted(glob.glob(os.path.join(RAW_DIR, "page_*.md")))
     if not md_files:
         print(f"[Error] No markdown files found in {RAW_DIR}/.")
@@ -2980,6 +3132,17 @@ def generate_viewer(standalone=False):
 
         sec1, sec2, sec3_md, sec3_html = parse_sections(raw_text)
 
+        # A page the scholar has saved opens with the saved text; the raw OCR stays as the
+        # baseline for proof marks, and the saved correction log restores the change tags
+        extra = {}
+        verified_path = os.path.join(verified_dir, f"page_{p_num}.md")
+        if os.path.exists(verified_path):
+            with open(verified_path, "r", encoding="utf-8") as v_f:
+                verified_text = v_f.read()
+            extra = {"verified": True, "orig_sec1": sec1, "orig_sec2": sec2,
+                     "saved_log": parse_correction_log(verified_text)}
+            sec1, sec2, sec3_md, sec3_html = parse_sections(verified_text)
+
         pages_data.append({
             "page": p_num,
             **page_metadata(int(p_num)),
@@ -2988,7 +3151,8 @@ def generate_viewer(standalone=False):
             "sec2": sec2,
             "sec3_md": sec3_md,
             "sec3_html": sec3_html,
-            "flags": review_flags.get(p_num, [])
+            "flags": review_flags.get(p_num, []),
+            **extra
         })
 
     json_data = json.dumps(pages_data, ensure_ascii=False)
@@ -2999,10 +3163,14 @@ def generate_viewer(standalone=False):
     os.makedirs(os.path.dirname(output_html) or ".", exist_ok=True)
     with open(output_html, "w", encoding="utf-8") as f:
         f.write(final_html)
-    print(f"[Success] Generated review portal: {output_html} (Loaded {len(pages_data)} pages)")
+    verified_count = sum(1 for p in pages_data if p.get("verified"))
+    print(f"[Success] Generated review portal: {output_html} (Loaded {len(pages_data)} pages, {verified_count} from {verified_dir}/)")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build the proofreading portal from output/raw/ and page images.")
     parser.add_argument("--standalone", action="store_true",
                         help=f"write a single offline file with embedded scans to {STANDALONE_HTML} instead of {SITE_HTML}")
-    generate_viewer(standalone=parser.parse_args().standalone)
+    parser.add_argument("--verified-dir", default=VERIFIED_DIR,
+                        help=f"folder of pages saved by the scholar, shown instead of the raw OCR (default: {VERIFIED_DIR})")
+    args = parser.parse_args()
+    generate_viewer(standalone=args.standalone, verified_dir=args.verified_dir)
