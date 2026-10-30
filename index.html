@@ -3109,7 +3109,8 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
       // The backend replies {ok, github: {ok, error?}, drive: {ok, error?}}
       let reply = null;
       try { reply = JSON.parse(await res.text()); } catch (e) { /* older backend without a JSON reply */ }
-      if (reply && reply.ok === false) {
+      // An older Drive-only backend replies {status: "success" | "error", error?}
+      if (reply && (reply.ok === false || reply.status === 'error')) {
         throw new Error(reply.error || (reply.github && reply.github.error) || (reply.drive && reply.drive.error) || 'unknown error');
       }
       const where = reply && reply.github && reply.github.ok
