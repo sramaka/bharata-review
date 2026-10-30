@@ -28,11 +28,13 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 │   ├── raw/                                   # Agent-generated OCR markdown (page_015.md … page_032.md), committed
 │   ├── verified/                              # Scholar-verified final markdown files
 │   ├── review_flags.json                      # Words flagged for scholar review (shown in the portal)
+│   ├── corrections/                           # corrections.jsonl + summary.md built from the correction logs
 │   └── proofread_bundle.html                  # (git-ignored) Optional offline portal with embedded scans (--standalone)
 ├── scripts/
 │   ├── extract_pages.py                       # PyMuPDF extractor: extract_pages.py START END [--dpi N]
 │   ├── build_html_review.py                   # Builds index.html + page_web/ from output/raw/ and page images
-│   └── local_review_and_direct_save_server.py # Local HTTP server (port 8000) with POST /save_verified → output/verified/
+│   ├── local_review_and_direct_save_server.py # Local HTTP server (port 8000) with POST /save_verified → output/verified/
+│   └── collect_corrections.py                 # Correction logs in output/verified/ → output/corrections/ (AI feedback)
 ├── index.html                                 # GitHub Pages portal, written by build_html_review.py (text only, ~0.4 MB)
 ├── page_web/                                  # Committed 1600px grayscale JPEG scans (~250 KB each) loaded by index.html
 ├── project_context_specification.md           # Project architecture and instructions (this file)
@@ -83,6 +85,13 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
 - **Auto-Fitting & Resizable Area:** Textareas automatically resize to the full height of the text content without internal scrollbars while preserving manual drag handles.
 - **Typography Controls (⚙ menu):** A numeric font-size input (14–48, default 22), `A−` / `A+` step buttons, and a font family selector (`Tiro Devanagari Sanskrit` (default), `Martel`, `Sahitya`, `Noto Serif Devanagari`, `Siddhanta`). All but Siddhanta load from Google Fonts; Siddhanta works only if it is installed locally. The chosen font is also used for the notes table, the Complete Text preview, copied text and Word/PDF exports. Headings use larger regular-weight type, because Tiro has no bold.
 - **Real-Time Proof Marks:** Edits to Section 1 are compared word by word (LCS diff) with the original OCR as they are typed. The results appear in a panel pinned to the bottom of the text pane, so they are always in view. The panel lists each change with surrounding context: deletions are struck through in red and insertions highlighted in amber/yellow (`#fef08a`). Clicking a change selects it in the editor. The panel can switch to a full-text view or collapse. A **↺ पूर्ववत् (Revert)** button restores the OCR text.
+- **Correction Log:** The proof-marks panel lists every change from the original OCR (Section 1) and the AI padaccheda (Section 2), and the reviewer tags each one.
+  - Section 1 changes are tagged `🔍 OCR-दोषः` (OCR misread the scan; the default), `⚠️ मुद्रणदोषः` (misprint in the printed book), or `✏️ अन्यत्` (other). Section 2 changes are tagged `✂️ पदच्छेददोषः` (AI padaccheda error; the default) or `✏️ अन्यत्`.
+  - Changes that come from an accepted review flag are marked as AI suggestions. A flag of kind `print` defaults to मुद्रणदोषः.
+  - Each change can carry a short note.
+  - On save, the page gets a `## ४. संशोधनलेखः (Correction Log)` table: number, section, kind, before, after, context, source (reviewer / AI flag accepted) and note. The save payload also carries the same entries as a `log` array, with `saved_at`.
+  - Misprints are not silently emended: the saved मूलपाठः keeps the printed reading, and the correction is appended to the Section 3 apparatus as a `⚠️ मुद्रणदोषः` row.
+  - The builder ignores Section 4 when reading pages. Tags and notes are kept for the browser session only, like the edits themselves.
 - **Review Flags:** `output/review_flags.json` lists words that need the scholar's attention, keyed by PDF page.
   - Each entry has: `section` (`sec1`/`sec2`), the exact `match` text, an optional `suggest` replacement, a `kind`, and a `note`.
   - There are three kinds: `ocr` (transcription differs from the scan; red wavy highlight), `print` (matches the scan but is probably a misprint; amber), and `verify` (unclear in the scan; blue dotted).
@@ -151,5 +160,12 @@ git commit -m "Update pages in review portal"
 git push origin main
 ```
 
-### E. Syncing Verified Files from Scholar
+### E. Collecting Corrections as AI Feedback
+After verified pages are pulled into `output/verified/`:
+```bash
+python3 scripts/collect_corrections.py        # → output/corrections/corrections.jsonl and summary.md
+```
+`summary.md` groups the logged changes by kind (OCR errors, padaccheda errors, misprints) with recurring character-level patterns (e.g. `श` → `ञ`). `config/agent_rules.md` tells the transcription agent to read it before transcribing.
+
+### F. Syncing Verified Files from Scholar
 Scholar edits land in Google Drive folder `bharata_verified_pages/`. Verified pages are periodically pulled down into `output/verified/` for archival and downstream corpus generation. This step is manual, and `output/verified/` is currently empty.

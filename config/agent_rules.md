@@ -61,3 +61,13 @@ Generate a structured table recording all textual flags, ambiguities, correction
 | १ | श्लोकः २ | ... | ... | ⚠️ मुद्रणदोषः | ... |
 
 ```
+
+---
+
+## Learning from Reviewer Corrections
+
+Before transcribing, read `output/corrections/summary.md` if it exists. It is built by `scripts/collect_corrections.py` from the correction logs the scholar's saves record (`## ४. संशोधनलेखः` in `output/verified/page_XXX.md`):
+
+* **OCR errors**: character-level patterns you misread before (for example `श्च` where the print has `ञ्च`, or a candrabindu typed for a printed anusvāra). Check every occurrence of these shapes against the scan.
+* **Padaccheda errors**: splits the scholar corrected. Apply the same splitting to similar forms.
+* **Misprints**: errors in the printed book itself. Transcribe them as printed in Section 1 and record the correction in Section 3 with `⚠️ मुद्रणदोषः`.

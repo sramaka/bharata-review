@@ -116,6 +116,10 @@ def parse_sections(raw_md):
         elif "३. सम्पादन" in s or "सम्पादनटिप्पण्य" in s:
             current_sec = 3
             continue
+        elif "४. संशोधनलेख" in s:
+            # Correction log written by the portal on save; not part of the text
+            current_sec = 4
+            continue
         elif current_sec == 1 and (s.startswith("## ") or s.startswith("# ")):
             continue
         elif "१. मूलपाठ" in s:
@@ -655,19 +659,49 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .proof-list { display: flex; flex-direction: column; gap: 6px; }
   .change-item {
+    background: #ffffff;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .change-text {
     display: block;
     width: 100%;
     text-align: left;
     background: #ffffff;
     color: #1c1917;
-    border: 1px solid #fde68a;
+    border: none;
     font-family: var(--font-family);
     font-size: calc(var(--font-size) * 0.85);
     line-height: 1.6;
     white-space: normal;
   }
-  .change-item:hover:not(:disabled) { background: #fef9c3; border-color: #f59e0b; }
-  .change-item .ctx { color: #78716c; }
+  .change-text:hover:not(:disabled) { background: #fef9c3; border-color: transparent; }
+  .change-text .ctx { color: #78716c; }
+  .change-sec {
+    font-family: 'Noto Sans Devanagari', system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: #92400e;
+    margin-right: 6px;
+  }
+  .change-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 0 8px 4px 8px; }
+  .change-meta select, .change-meta input {
+    min-height: 32px;
+    padding: 3px 8px;
+    font-size: 13px;
+    background: #ffffff;
+    color: #1c1917;
+    border: 1px solid #d6d3d1;
+    border-radius: 6px;
+  }
+  .change-meta select:hover { background: #fafaf9; border-color: #a8a29e; }
+  .change-note { flex: 1; min-width: 160px; font-family: inherit; }
+  .change-hint { width: 100%; font-size: 12px; color: #78716c; }
+  .proof-full-label { font-size: 13px; font-weight: 600; color: #92400e; margin: 8px 0 2px 0; font-family: 'Noto Sans Devanagari', system-ui, sans-serif; white-space: normal; }
   .proof-full {
     font-family: var(--font-family);
     font-size: var(--font-size);
@@ -1278,7 +1312,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     if (item.baseline === undefined) return 'unreviewed';
     const changed = item.sec1 !== item.baseline || item.sec2 !== item.sec2Baseline;
     if (item.savedSnapshot !== undefined) {
-      return buildPageMarkdown(item) === item.savedSnapshot ? 'saved' : 'edited';
+      return buildSavedMarkdown(item).content === item.savedSnapshot ? 'saved' : 'edited';
     }
     return changed ? 'edited' : 'unreviewed';
   }
@@ -1373,10 +1407,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   function acceptFlag(i) {
-    const f = data[currentIndex].flags[i];
+    const item = data[currentIndex];
+    const f = item.flags[i];
     const editor = flagEditor(f);
     const start = editor.value.indexOf(f.match);
     if (start === -1 || !f.suggest) return;
+    // Remembered so the resulting change is logged as an accepted AI suggestion
+    (item.acceptedFlags = item.acceptedFlags || []).push(f);
     editor.value = editor.value.slice(0, start) + f.suggest + editor.value.slice(start + f.match.length);
     if (f.section === 'sec2') handleSec2Edit(); else handleEdit();
     showToast(`✔ ${f.suggest} — स्वीकृतम् (Accepted; remember to save)`);
@@ -1508,6 +1545,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   function handleSec2Edit() {
     autoResize(sec2Editor);
     data[currentIndex].sec2 = sec2Editor.value;
+    refreshProofPanel();
     updateStatus();
     renderFlags();
   }
@@ -1531,10 +1569,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const currentText = sec1Editor.value;
     item.sec1 = currentText;
 
-    const changed = currentText !== item.baseline;
-    revertBtn.style.display = changed ? 'inline-flex' : 'none';
-    proofPanel.hidden = !changed;
-    if (changed) renderProofMarks(diffTokens(tokenize(item.baseline), tokenize(currentText)));
+    revertBtn.style.display = currentText !== item.baseline ? 'inline-flex' : 'none';
+    refreshProofPanel();
     updateStatus();
     renderFlags();
   }
@@ -1594,35 +1630,203 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     return parts.join('').replace(/\s+/g, ' ');
   }
 
-  function renderProofMarks(ops) {
-    // Group consecutive changed tokens into hunks, tracking their offsets in the edited text
-    const hunks = [];
+  /* ---------- Changes and the correction log ----------
+     Every difference from the original OCR (Section 1) or AI padaccheda (Section 2) is a change.
+     The reviewer tags each one; the tags drive the log saved with the page. */
+  const CHANGE_CATEGORIES = {
+    ocr: { label: 'OCR-दोषः (OCR misread the scan)', badge: '🔍 OCR-दोषः', secs: ['sec1'] },
+    misprint: { label: 'मुद्रणदोषः (misprint in the book)', badge: '⚠️ मुद्रणदोषः', secs: ['sec1'] },
+    pada: { label: 'पदच्छेददोषः (AI padaccheda error)', badge: '✂️ पदच्छेददोषः', secs: ['sec2'] },
+    other: { label: 'अन्यत् (other)', badge: '✏️ अन्यत्', secs: ['sec1', 'sec2'] }
+  };
+  const SEC_LABEL = { sec1: 'मूलपाठः', sec2: 'पदच्छेदः' };
+  const SOURCE_LABEL = { reviewer: 'संशोधकः (reviewer)', ai: 'AI-सूचना स्वीकृता (AI flag accepted)' };
+  let currentChanges = [];
+
+  // Group consecutive changed tokens into hunks; hunkOf[k] is the hunk index of op k
+  function computeHunks(ops) {
+    const hunks = [], hunkOf = [];
     let pos = 0, hunk = null;
     ops.forEach(([op, tok], k) => {
       if (op === '=') { hunk = null; pos += tok.length; return; }
       if (!hunk) { hunk = { first: k, last: k, del: '', ins: '', start: pos, end: pos }; hunks.push(hunk); }
+      hunkOf[k] = hunks.length - 1;
       hunk.last = k;
       if (op === '-') hunk.del += tok;
       else { hunk.ins += tok; pos += tok.length; hunk.end = pos; }
     });
+    return { hunks, hunkOf };
+  }
 
-    const n = hunks.length;
+  function acceptedFlagFor(item, sec, h) {
+    const del = h.del.trim(), ins = h.ins.trim();
+    return (item.acceptedFlags || []).find(f => f.section === sec &&
+      (!del || f.match.includes(del)) && (!ins || (f.suggest || '').includes(ins)));
+  }
+
+  function defaultCategory(sec, h, flag) {
+    if (flag) return flag.kind === 'print' ? 'misprint' : (sec === 'sec2' ? 'pada' : 'ocr');
+    if (!h.del.trim() && !h.ins.trim()) return 'other';   // spacing / line breaks only
+    return sec === 'sec2' ? 'pada' : 'ocr';
+  }
+
+  function pageChanges(item) {
+    const result = {};
+    item.changeTags = item.changeTags || {};
+    item.changeNotes = item.changeNotes || {};
+    [['sec1', 'baseline'], ['sec2', 'sec2Baseline']].forEach(([sec, baseKey]) => {
+      const base = item[baseKey], text = item[sec] || '';
+      if (base === undefined || base === text) { result[sec] = { ops: [], hunks: [], hunkOf: [], changes: [] }; return; }
+      const ops = diffTokens(tokenize(base), tokenize(text));
+      const { hunks, hunkOf } = computeHunks(ops);
+      const seen = {};
+      const changes = hunks.map((h, hi) => {
+        const id = `${sec}|${h.del}|${h.ins}`;
+        seen[id] = (seen[id] || 0) + 1;
+        const key = `${id}|${seen[id]}`;
+        const flag = acceptedFlagFor(item, sec, h);
+        const tag = item.changeTags[key];
+        return {
+          sec, key, hunk: h, hunkIndex: hi,
+          category: tag && CHANGE_CATEGORIES[tag].secs.includes(sec) ? tag : defaultCategory(sec, h, flag),
+          source: flag ? 'ai' : 'reviewer',
+          note: item.changeNotes[key] || '',
+          before: contextText(ops, h.first - 1, -1),
+          after: contextText(ops, h.last + 1, 1)
+        };
+      });
+      result[sec] = { ops, hunks, hunkOf, changes };
+    });
+    return result;
+  }
+
+  function refreshProofPanel() {
+    const item = data[currentIndex];
+    const pc = pageChanges(item);
+    currentChanges = [...pc.sec1.changes, ...pc.sec2.changes];
+    proofPanel.hidden = !currentChanges.length;
+    if (!currentChanges.length) return;
+
+    const n = currentChanges.length;
     proofTitle.innerText = `दृष्टं शोधनम् — ${toDevanagariDigits(n)} परिवर्तन${n === 1 ? 'म्' : 'ानि'} (${n} change${n === 1 ? '' : 's'})`;
 
-    proofList.innerHTML = hunks.map((h, idx) => {
-      const before = escapeHtml(contextText(ops, h.first - 1, -1));
-      const after = escapeHtml(contextText(ops, h.last + 1, 1));
+    proofList.innerHTML = currentChanges.map((c, i) => {
+      const h = c.hunk;
       const del = h.del ? `<del>${escapeHtml(visibleToken(h.del))}</del>` : '';
       const ins = h.ins ? `<ins>${escapeHtml(visibleToken(h.ins))}</ins>` : '';
-      return `<button class="change-item" onclick="jumpToChange(${h.start}, ${h.end})" title="पाठे दर्शयतु (Show in editor)"><span class="ctx">…${before}</span>${del}${del && ins ? ' → ' : ''}${ins}<span class="ctx">${after}…</span></button>`;
+      const options = Object.entries(CHANGE_CATEGORIES).filter(([, v]) => v.secs.includes(c.sec))
+        .map(([k, v]) => `<option value="${k}"${k === c.category ? ' selected' : ''}>${v.label}</option>`).join('');
+      const hint = c.category === 'misprint'
+        ? '<span class="change-hint">रक्षणे मुद्रितः पाठः मूलपाठे रक्ष्यते, शोधनं टिप्पण्यां लिख्यते (On save, the printed reading stays in मूलपाठः and the correction goes into the notes)</span>' : '';
+      const source = c.source === 'ai' ? ' · ⚑ AI' : '';
+      return `<div class="change-item">
+        <button class="change-text" onclick="jumpToChangeIn(${i})" title="पाठे दर्शयतु (Show in editor)"><span class="change-sec">${SEC_LABEL[c.sec]}${source}</span><span class="ctx">…${escapeHtml(c.before)}</span>${del}${del && ins ? ' → ' : ''}${ins}<span class="ctx">${escapeHtml(c.after)}…</span></button>
+        <div class="change-meta">
+          <select onchange="setChangeTag(${i}, this.value)" title="दोषप्रकारः (Kind of error)">${options}</select>
+          <input class="change-note" type="text" value="${escapeHtml(c.note).replace(/"/g, '&quot;')}" placeholder="टिप्पणी (optional note, e.g. ञ्च read as श्च)" oninput="setChangeNote(${i}, this.value)">
+          ${hint}
+        </div>
+      </div>`;
     }).join('');
 
-    proofFull.innerHTML = ops.map(([op, tok]) => {
+    const fullHtml = ops => ops.map(([op, tok]) => {
       if (op === '=') return escapeHtml(tok);
       return op === '-' ? `<del>${escapeHtml(visibleToken(tok))}</del>` : `<ins>${escapeHtml(tok)}</ins>`;
     }).join('');
+    proofFull.innerHTML = [['sec1', '१. मूलपाठः'], ['sec2', '२. पदच्छेदः']]
+      .filter(([sec]) => pc[sec].changes.length)
+      .map(([sec, label]) => `<div class="proof-full-label">${label}</div>${fullHtml(pc[sec].ops)}`).join('\n');
 
     applyProofView();
+  }
+
+  function setChangeTag(i, value) {
+    const c = currentChanges[i];
+    data[currentIndex].changeTags[c.key] = value;
+    refreshProofPanel();
+    updateStatus();
+  }
+
+  function setChangeNote(i, value) {
+    const c = currentChanges[i];
+    data[currentIndex].changeNotes[c.key] = value;
+    updateStatus();
+  }
+
+  function jumpToChangeIn(i) {
+    const c = currentChanges[i];
+    if (c.sec === 'sec2') {
+      if (!document.getElementById('sec2Box').classList.contains('visible')) toggleSection('sec2Box', 'toggleSec2');
+      jumpToChange(c.hunk.start, c.hunk.end, sec2Editor);
+    } else {
+      jumpToChange(c.hunk.start, c.hunk.end, sec1Editor);
+    }
+  }
+
+  // Edited text with the hunks in keepPrinted reverted to the original reading
+  function textKeepingPrinted(ops, hunkOf, keepPrinted) {
+    return ops.map(([op, tok], k) => {
+      if (op === '=') return tok;
+      const keepOriginal = keepPrinted.has(hunkOf[k]);
+      return (op === '-') === keepOriginal ? tok : '';
+    }).join('');
+  }
+
+  function mdCell(text) {
+    const t = (text || '').replace(/\|/g, '¦').replace(/\s*\n\s*/g, ' ↵ ').trim();
+    return t || '∅';
+  }
+
+  // Misprints are recorded in the apparatus table rather than silently emended in मूलपाठः
+  function appendApparatusRows(sec3, misprints) {
+    const lines = sec3 ? sec3.split('\n') : [];
+    const isRow = l => /^\s*\|/.test(l) && !/^\s*\|[\s\-:|]+\|\s*$/.test(l);
+    let rowCount = Math.max(0, lines.filter(isRow).length - 1);
+    if (!lines.some(isRow)) {
+      lines.push('| सङ्ख्या | स्थानम् | मूलपाठः | शोधितः पाठः | प्रकारः | विवरणम् |', '| :--- | :--- | :--- | :--- | :--- | :--- |');
+    }
+    misprints.forEach(c => {
+      rowCount += 1;
+      const note = 'संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer)' + (c.note ? `; ${c.note}` : '');
+      lines.push(`| ${toDevanagariDigits(rowCount)} | …${mdCell(c.before)}… | ${mdCell(c.hunk.del)} | ${mdCell(c.hunk.ins)} | ⚠️ मुद्रणदोषः | ${mdCell(note)} |`);
+    });
+    return lines.join('\n');
+  }
+
+  function changeLogEntries(pc) {
+    return [...pc.sec1.changes, ...pc.sec2.changes].map((c, i) => ({
+      n: i + 1,
+      section: c.sec,
+      category: c.category,
+      before: c.hunk.del,
+      after: c.hunk.ins,
+      context_before: c.before,
+      context_after: c.after,
+      source: c.source,
+      note: c.note
+    }));
+  }
+
+  function logTableMarkdown(entries) {
+    const rows = entries.map(e =>
+      `| ${toDevanagariDigits(e.n)} | ${SEC_LABEL[e.section]} | ${CHANGE_CATEGORIES[e.category].badge} | ${mdCell(e.before)} | ${mdCell(e.after)} | …${mdCell(e.context_before)} [${mdCell(e.before)} → ${mdCell(e.after)}] ${mdCell(e.context_after)}… | ${SOURCE_LABEL[e.source]} | ${e.note ? mdCell(e.note) : ''} |`);
+    return ['## ४. संशोधनलेखः (Correction Log)', '',
+      '| सङ्ख्या | विभागः | प्रकारः | पूर्वपाठः | संशोधितः पाठः | सन्दर्भः | स्रोतः | टिप्पणी |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |', ...rows].join('\n') + '\n';
+  }
+
+  // The page as saved: misprints kept as printed (and noted in Section 3), plus the correction log
+  function buildSavedMarkdown(item) {
+    const pc = pageChanges(item);
+    const misprints = pc.sec1.changes.filter(c => c.category === 'misprint');
+    let sec1 = item.sec1, sec3 = (item.sec3_md || '').trim();
+    if (misprints.length) {
+      sec1 = textKeepingPrinted(pc.sec1.ops, pc.sec1.hunkOf, new Set(misprints.map(c => c.hunkIndex)));
+      sec3 = appendApparatusRows(sec3, misprints);
+    }
+    const md = buildPageMarkdown({ ...item, sec1, sec3_md: sec3 });
+    const log = changeLogEntries(pc);
+    return { content: log.length ? md + '\n' + logTableMarkdown(log) : md, log };
   }
 
   function applyProofView() {
@@ -2646,7 +2850,8 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
     const item = data[currentIndex];
     item.sec1 = sec1Editor.value;
     item.sec2 = sec2Editor.value;
-    const outContent = buildPageMarkdown(item);
+    const saved = buildSavedMarkdown(item);
+    const outContent = saved.content;
 
     saveBtn.innerText = '⏳ रक्षणं क्रियते... (Saving)';
     saveBtn.style.background = '#d97706';
@@ -2657,7 +2862,10 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           page: item.page,
-          content: outContent
+          content: outContent,
+          // Structured copy of the correction log, for a backend that keeps a running log
+          log: saved.log,
+          saved_at: new Date().toISOString()
         })
       });
 
