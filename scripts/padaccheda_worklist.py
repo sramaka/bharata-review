@@ -105,9 +105,10 @@ def write_outputs(items, out_dir):
     print(f"[Success] {len(items)} sentence(s) to redo → {out_dir}/padaccheda_worklist.md, padaccheda_flags.json")
 
 
-def merge_flags(path, flags_json):
+def merge_flags(path, flags_json, keep=lambda e: e.get("suggest", "").strip()):
+    """Add the entries of FILE that `keep` accepts to the review flags, skipping duplicates."""
     with open(path, encoding="utf-8") as f:
-        filled = [e for e in json.load(f) if e.get("suggest", "").strip()]
+        filled = [e for e in json.load(f) if keep(e)]
     review = {}
     if os.path.exists(flags_json):
         with open(flags_json, encoding="utf-8") as f:
@@ -116,14 +117,14 @@ def merge_flags(path, flags_json):
     for e in filled:
         page = e.pop("page")
         page_flags = review.setdefault(page, [])
-        if any(f.get("section") == e["section"] and f.get("match") == e["match"] for f in page_flags):
+        if any(f.get("section") == e["section"] and f.get("match") == e["match"] and f.get("kind") == e["kind"] for f in page_flags):
             continue
         page_flags.append(e)
         added += 1
     with open(flags_json, "w", encoding="utf-8") as f:
         json.dump(review, f, ensure_ascii=False, indent=2)
         f.write("\n")
-    print(f"[Success] added {added} padaccheda suggestion(s) to {flags_json}; rebuild the portal to show them.")
+    print(f"[Success] added {added} entr{'y' if added == 1 else 'ies'} to {flags_json}; rebuild the portal to show them.")
 
 
 def main():

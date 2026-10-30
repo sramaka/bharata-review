@@ -35,7 +35,8 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 │   ├── build_html_review.py                   # Builds index.html + page_web/ from output/raw/ and page images
 │   ├── local_review_and_direct_save_server.py # Local HTTP server (port 8000) with POST /save_verified → output/verified/
 │   ├── collect_corrections.py                 # Correction logs in output/verified/ → output/corrections/ (AI feedback)
-│   └── padaccheda_worklist.py                 # Sentences whose source was corrected → padaccheda to regenerate
+│   ├── padaccheda_worklist.py                 # Sentences whose source was corrected → padaccheda to regenerate
+│   └── review_marks.py                        # Words the scholar asked the AI to check → AI replies as flags
 ├── index.html                                 # GitHub Pages portal, written by build_html_review.py (text only, ~0.4 MB)
 ├── page_web/                                  # Committed 1600px grayscale JPEG scans (~250 KB each) loaded by index.html
 ├── project_context_specification.md           # Project architecture and instructions (this file)
@@ -78,6 +79,12 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
 - **Scholar UX:** Tailored for a traditional Sanskrit scholar. Labels are in Sanskrit with English glosses, and no raw Markdown markup or technical prompts are shown.
 - **Single-Row Header:** Page navigation and section toggles on the left; **📖 सम्पूर्णः ग्रन्थः**, a **⚙** settings menu, and **💾 रक्षतु (Save)** on the right. The interface font is Noto Sans Devanagari (loaded from Google Fonts), with 14px+ text and 36px-tall buttons.
 - **Page Navigation:** Previous / Next buttons, a page dropdown, and `Alt + ←/→` keyboard shortcuts. Pages are labelled by section and printed page (e.g. `आदिपर्व · पृ. १ (PDF 015)`, `प्रस्तावना (Foreword) · iii (PDF 007)`). The builder derives these labels from `PARVAS`, `FRONT_MATTER` and `BOOK_PAGE_OFFSET` in `build_html_review.py`.
+- **Marking Words for Later:** In either section, the reviewer selects a word (or puts the caret in it) and clicks **⚑ चिह्नयतु (Mark)** in the section header, or presses `Alt + M`. They then choose **मया पश्चात् (me, later)** or **AI-परीक्षणाय (ask the AI)**, with an optional note.
+  - Marks are highlighted (teal for the reviewer, indigo for the AI) and listed first in the ⚑ card, with **दर्शयतु** and **निवारयतु (Clear)**.
+  - They are included in ⚑ navigation and in export marking.
+  - On save they are written to a `## ५. समीक्षाचिह्नानि (Marked for Review)` table (section, word, occurrence, for whom, note) and restored when the page reopens from `output/verified/`.
+  - The AI answers with a review flag on the same word: either a correction (a `suggest` to accept) or a `kind: "reply"` explanation shown as `AI-उत्तरम्`.
+  - A reply counts as settled once the reviewer clears the mark. Accepting a suggestion clears the mark automatically.
 - **Review Navigation:** `‹ ⚑` / `⚑ ›` in the header (or `Alt + ↑/↓`) step through everything still to review across the whole book, in page order (मूलपाठः before पदच्छेदः). That covers open review flags, and padaccheda sentences whose source was corrected but which are not yet updated or confirmed. Each step jumps to the page, opens Section 2 if needed and selects the text. The counter shows `⚑ position / total`, or `✔ ०` when nothing is left, and navigation wraps around the book. On screens narrower than 1320px the Complete Text button shows only its icon, and below 1240px the title is hidden so the header stays on one row.
 - **Page Status:** Each page shows `○ अपरीक्षितम्` (not yet saved), `● संशोधितम्, अरक्षितम्` (edited, not saved) or `✔ रक्षितम्` (saved). The same mark is shown in the page dropdown. Status is kept for the browser session only.
 - **English Front Matter:** Pages marked `en` use a Latin serif font (Noto Serif), relabel Section 1 as "Original Text — English", and hide the पदच्छेदः toggle.
@@ -183,5 +190,13 @@ venv/bin/python scripts/build_html_review.py   # the suggestions appear as purpl
 ```
 The worklist lists sentences whose मूलपाठः the scholar corrected while the padaccheda was neither edited nor confirmed. Merged suggestions are `kind: "pada"` review flags on Section 2, which the scholar accepts in the portal.
 
-### G. Syncing Verified Files from Scholar
+### G. Answering Words the Scholar Asked the AI to Check
+```bash
+python3 scripts/review_marks.py                # → output/corrections/ai_review_requests.md + ai_review_replies.json
+# agent: per entry, fill "suggest" (kind ocr / print / pada) or explain in "note" (kind reply)
+python3 scripts/review_marks.py --merge output/corrections/ai_review_replies.json
+venv/bin/python scripts/build_html_review.py
+```
+
+### H. Syncing Verified Files from Scholar
 Scholar edits land in Google Drive folder `bharata_verified_pages/`. Verified pages are periodically pulled down into `output/verified/` for archival and downstream corpus generation. This step is manual, and `output/verified/` is currently empty.

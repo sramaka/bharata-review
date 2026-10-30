@@ -142,6 +142,31 @@ def parse_correction_log(md_text):
         })
     return rows
 
+def parse_review_marks(md_text):
+    """Rows of the '५. समीक्षाचिह्नानि (Marked for Review)' table written by the portal on save."""
+    lines = md_text.splitlines()
+    start = next((i for i, l in enumerate(lines) if "५. समीक्षाचिह्न" in l), None)
+    if start is None:
+        return []
+    marks = []
+    for line in lines[start + 1:]:
+        s = line.strip()
+        if s.startswith("## "):
+            break
+        if not (s.startswith("|") and s.endswith("|")) or re.match(r"^\|[\s\-:|]+\|$", s):
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) < 6 or cells[0] == "सङ्ख्या":
+            continue
+        marks.append({
+            "section": CORRECTION_SECTION_BY_LABEL.get(cells[1], cells[1]),
+            "match": cells[2].replace(" ↵ ", "\n"),
+            "occurrence": int(cells[3].translate(str.maketrans("०१२३४५६७८९", "0123456789")) or 1),
+            "target": "askai" if cells[4].startswith("AI") else "mine",
+            "note": cells[5],
+        })
+    return marks
+
 def parse_sections(raw_md):
     lines = raw_md.splitlines()
     sec1_lines = []
@@ -157,7 +182,7 @@ def parse_sections(raw_md):
         elif "३. सम्पादन" in s or "सम्पादनटिप्पण्य" in s:
             current_sec = 3
             continue
-        elif "४. संशोधनलेख" in s:
+        elif "४. संशोधनलेख" in s or "५. समीक्षाचिह्न" in s:
             # Correction log written by the portal on save; not part of the text
             current_sec = 4
             continue
@@ -646,6 +671,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   mark.flag { color: transparent; border-radius: 3px; padding: 0; text-decoration-skip-ink: none; text-underline-offset: 0.3em; }
   mark.flag-ocr { background: rgba(239, 68, 68, 0.16); text-decoration: underline wavy #dc2626; }
   mark.flag-print { background: rgba(245, 158, 11, 0.22); text-decoration: underline wavy #d97706; }
+  mark.flag-mine { background: rgba(20, 184, 166, 0.16); text-decoration: underline wavy #0d9488; }
+  mark.flag-askai { background: rgba(99, 102, 241, 0.15); text-decoration: underline wavy #4f46e5; }
+  mark.flag-reply { background: rgba(16, 185, 129, 0.12); text-decoration: underline dotted #059669; text-decoration-thickness: 2px; }
   mark.flag-pada { background: rgba(147, 51, 234, 0.12); text-decoration: underline wavy #9333ea; }
   mark.flag-stale { background: rgba(249, 115, 22, 0.13); text-decoration: underline dashed #ea580c; text-decoration-thickness: 2px; }
   mark.flag-verify { background: rgba(59, 130, 246, 0.14); text-decoration: underline dotted #2563eb; text-decoration-thickness: 2px; }
@@ -657,6 +685,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .legend-print::before { background: #fcd34d; }
   .legend-verify::before { background: #93c5fd; }
   .legend-pada::before { background: #d8b4fe; }
+  .legend-mine::before { background: #99f6e4; }
+  .legend-askai::before { background: #c7d2fe; }
   .flag-list { display: flex; flex-direction: column; gap: 8px; }
   .flag-item {
     border: 1px solid #e7e5e4;
@@ -674,6 +704,45 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .kind-print .flag-kind { background: #fef3c7; color: #92400e; }
   .kind-verify .flag-kind { background: #dbeafe; color: #1e40af; }
   .kind-pada .flag-kind { background: #f3e8ff; color: #6b21a8; }
+  .kind-mine .flag-kind { background: #ccfbf1; color: #115e59; }
+  .kind-askai .flag-kind { background: #e0e7ff; color: #3730a3; }
+  .kind-reply .flag-kind { background: #d1fae5; color: #065f46; }
+  .flag-item.is-mark { border-color: #99f6e4; background: #f0fdfa; }
+  .flag-lost { font-size: 12px; color: #b45309; }
+
+  /* "Mark for review" dialog */
+  .mark-dialog {
+    position: fixed;
+    left: 50%;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    z-index: 90;
+    width: min(520px, calc(100vw - 32px));
+    background: #ffffff;
+    color: #1c1917;
+    border: 1px solid #99f6e4;
+    border-top: 4px solid #0d9488;
+    border-radius: 10px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mark-dialog-title { font-weight: 700; color: #115e59; }
+  .mark-dialog-word { font-family: var(--font-family); font-size: 1.3em; color: #0f172a; }
+  .mark-dialog label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 14px; }
+  .mark-dialog input[type="text"] {
+    min-height: 36px;
+    padding: 4px 10px;
+    border: 1px solid #d6d3d1;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 14px;
+    color: #1c1917;
+    background: #ffffff;
+  }
+  .mark-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .pada-status { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
   .pada-status.stale { color: #c2410c; }
   .pada-status.ok { color: #166534; }
@@ -1175,6 +1244,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <span class="legend-print">मुद्रणदोषः? (possible misprint)</span>
           <span class="legend-verify">परीक्षणीयम् (please verify)</span>
           <span class="legend-pada">नवः पदच्छेदः (updated padaccheda)</span>
+          <span class="legend-mine">चिह्नितम् (marked for later)</span>
+          <span class="legend-askai">AI-परीक्षणाय (asked the AI)</span>
         </span>
       </div>
       <div id="flagList" class="flag-list"></div>
@@ -1185,6 +1256,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="card-header">
         <span id="sec1Label">१. मूलपाठः (Devanagari OCR Text)</span>
         <div class="card-header-right">
+          <button class="light-btn" onclick="openMarkDialog('sec1')" title="चितं पदं समीक्षार्थं चिह्नयतु (Mark the selected word for review — Alt + M)">⚑ चिह्नयतु (Mark)</button>
           <button class="light-btn" onclick="copySectionText('sec1')" title="Copy Mūlapāṭha text">📋 प्रतिकुरुत (Copy)</button>
           <button id="revertBtn" class="light-btn" style="display: none; color: #b91c1c; border-color: #fecaca;" onclick="revertCurrentPage()" title="मूलपाठं प्रत्यानयतु (Revert edits to original OCR)">↺ पूर्ववत् (Revert)</button>
         </div>
@@ -1200,6 +1272,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="card-header" style="color: #1e3a8a; border-color: #bfdbfe;">
         <span>२. पदच्छेदसहितः पाठः (Sandhi-split Padaccheda)</span>
         <div class="card-header-right">
+          <button class="light-btn" onclick="openMarkDialog('sec2')" title="चितं पदं समीक्षार्थं चिह्नयतु (Mark the selected word for review — Alt + M)">⚑ चिह्नयतु (Mark)</button>
           <button class="light-btn" onclick="copySectionText('sec2')" title="Copy Padaccheda text">📋 प्रतिकुरुत (Copy)</button>
         </div>
       </div>
@@ -1297,6 +1370,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<!-- Mark a word for review later -->
+<div id="markDialog" class="mark-dialog" role="dialog" aria-labelledby="markDialogTitle" hidden>
+  <div id="markDialogTitle" class="mark-dialog-title">⚑ समीक्षार्थं चिह्नयतु (Mark for review)</div>
+  <div id="markWord" class="mark-dialog-word"></div>
+  <label><input type="radio" name="markTarget" value="mine" checked> मया पश्चात् (Me, later)</label>
+  <label><input type="radio" name="markTarget" value="askai"> AI-परीक्षणाय (Ask the AI to check)</label>
+  <input id="markNote" type="text" placeholder="टिप्पणी (optional note, e.g. unsure of the conjunct)">
+  <div class="mark-dialog-actions">
+    <button class="light-btn" onclick="closeMarkDialog()">निवर्तताम् (Cancel)</button>
+    <button class="save-btn" onclick="saveMark()">⚑ चिह्नयतु (Mark)</button>
+  </div>
+</div>
+
 <!-- Toast Feedback -->
 <div id="toast" class="toast"></div>
 
@@ -1314,6 +1400,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   const sec2Backdrop = document.getElementById('sec2Backdrop');
   const flagPanel = document.getElementById('flagPanel');
   const reviewCount = document.getElementById('reviewCount');
+  const markDialog = document.getElementById('markDialog');
+  const markWord = document.getElementById('markWord');
+  const markNote = document.getElementById('markNote');
   const flagTitle = document.getElementById('flagTitle');
   const flagList = document.getElementById('flagList');
   const pagePdfNum = document.getElementById('pagePdfNum');
@@ -1380,7 +1469,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   function pageStatus(item) {
     if (item.baseline === undefined) return 'unreviewed';
-    const changed = item.sec1 !== item.baseline || item.sec2 !== item.sec2Baseline;
+    const changed = item.sec1 !== item.baseline || item.sec2 !== item.sec2Baseline || (item.marks || []).length > 0;
     if (item.savedSnapshot !== undefined) {
       return buildSavedMarkdown(item).content === item.savedSnapshot ? 'saved' : 'edited';
     }
@@ -1395,6 +1484,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   /* ---------- Review flags ---------- */
   const FLAG_KIND_LABEL = {
+    mine: 'चिह्नितम् — मया पश्चात् (Marked: me, later)',
+    askai: 'चिह्नितम् — AI-परीक्षणाय (Marked: ask the AI)',
+    reply: 'AI-उत्तरम् (AI reply)',
     pada: 'नवः पदच्छेदः (Updated padaccheda)',
     ocr: 'पाठभेदः (Differs from scan)',
     print: 'मुद्रणदोषः? (Possible misprint)',
@@ -1402,12 +1494,92 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   };
 
   // A flag is resolved once its flagged text no longer appears in its section
+  function itemMarks(item) {
+    return item.marks || item.saved_marks || [];
+  }
+
+  // A flag is open while its text is still there; an AI reply (no suggestion) only while the
+  // reviewer's mark on the same word remains
   function isFlagOpen(item, f) {
-    return (item[f.section] || '').includes(f.match);
+    if (!(item[f.section] || '').includes(f.match)) return false;
+    if (f.kind === 'reply') return itemMarks(item).some(m => m.section === f.section && m.match === f.match);
+    return true;
   }
 
   function openFlagCount(item) {
-    return (item.flags || []).filter(f => isFlagOpen(item, f)).length;
+    return (item.flags || []).filter(f => isFlagOpen(item, f)).length + itemMarks(item).length;
+  }
+
+  /* ---------- Reviewer marks: words marked for review later (by the reviewer or the AI) ---------- */
+  // Position of the mark's n-th occurrence in its section, or null if the text has changed
+  function markRange(item, m) {
+    const ranges = flagRanges(item[m.section] || '', m.match);
+    const r = ranges[(m.occurrence || 1) - 1] || ranges[0];
+    return r ? { start: r[0], end: r[1] } : null;
+  }
+
+  let pendingMark = null;
+  let lastEditorSec = 'sec1';
+
+  function openMarkDialog(sec) {
+    const editor = sec === 'sec2' ? sec2Editor : sec1Editor;
+    let start = editor.selectionStart, end = editor.selectionEnd;
+    const text = editor.value;
+    if (start === end) {
+      // No selection: take the word around the caret
+      const sep = /[\s।॥,;‘’'"“”—]/;
+      while (start > 0 && !sep.test(text[start - 1])) start--;
+      while (end < text.length && !sep.test(text[end])) end++;
+    }
+    const match = text.slice(start, end).trim();
+    if (!match) { showToast('पदं चिनोतु (Select a word in the text first)'); return; }
+    start = text.indexOf(match, start);
+    pendingMark = { section: sec, match, occurrence: flagRanges(text.slice(0, start + match.length), match).length };
+    markWord.innerText = match;
+    markNote.value = '';
+    markDialog.hidden = false;
+    markNote.focus();
+  }
+
+  function closeMarkDialog() {
+    markDialog.hidden = true;
+    pendingMark = null;
+  }
+
+  function saveMark() {
+    if (!pendingMark) return;
+    const item = data[currentIndex];
+    const target = document.querySelector('input[name="markTarget"]:checked').value;
+    item.marks = item.marks || [];
+    item.marks.push({ ...pendingMark, target, note: markNote.value.trim() });
+    showToast(`⚑ ${pendingMark.match} — चिह्नितम् (Marked; remember to save)`);
+    closeMarkDialog();
+    renderFlags();
+    updateStatus();
+  }
+
+  function clearMark(i) {
+    const item = data[currentIndex];
+    item.marks.splice(i, 1);
+    renderFlags();
+    updateStatus();
+  }
+
+  function showMark(i) {
+    const item = data[currentIndex];
+    const m = item.marks[i], r = markRange(item, m);
+    if (!r) return;
+    if (m.section === 'sec2' && !document.getElementById('sec2Box').classList.contains('visible')) toggleSection('sec2Box', 'toggleSec2');
+    jumpToChange(r.start, r.end, m.section === 'sec2' ? sec2Editor : sec1Editor);
+  }
+
+  function marksTableMarkdown(marks) {
+    const target = { mine: 'संशोधकः पश्चात् (reviewer, later)', askai: 'AI-परीक्षणाय (for the AI)' };
+    const rows = marks.map((m, i) =>
+      `| ${toDevanagariDigits(i + 1)} | ${SEC_LABEL[m.section]} | ${mdCell(m.match)} | ${toDevanagariDigits(m.occurrence || 1)} | ${target[m.target]} | ${m.note ? mdCell(m.note) : ''} |`);
+    return ['## ५. समीक्षाचिह्नानि (Marked for Review)', '',
+      '| सङ्ख्या | विभागः | पदम् | आवृत्तिः | कस्मै | टिप्पणी |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |', ...rows].join('\n') + '\n';
   }
 
   function flagRanges(text, match) {
@@ -1435,18 +1607,34 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     [['sec1', sec1Backdrop], ['sec2', sec2Backdrop]].forEach(([sec, backdrop]) => {
       const text = item[sec] || '';
       const marks = [];
-      flags.filter(f => f.section === sec).forEach(f =>
+      flags.filter(f => f.section === sec && isFlagOpen(item, f)).forEach(f =>
         flagRanges(text, f.match).forEach(([start, end]) => marks.push({ start, end, kind: f.kind })));
+      // Reviewer marks are drawn first so they win over an AI flag on the same word
+      (item.marks || []).filter(m => m.section === sec).forEach(m => {
+        const r = markRange(item, m);
+        if (r) marks.unshift({ start: r.start, end: r.end, kind: m.target });
+      });
       // Padaccheda sentences whose source was corrected but which have not been updated yet
       if (sec === 'sec2') currentStaleRanges.forEach(r => marks.push({ start: r.start, end: r.end, kind: 'stale' }));
       backdrop.innerHTML = backdropHtml(text, marks);
     });
 
-    flagPanel.hidden = !flags.length;
-    if (flags.length) {
+    const userMarks = item.marks || [];
+    flagPanel.hidden = !flags.length && !userMarks.length;
+    if (flags.length || userMarks.length) {
       const open = openFlagCount(item);
-      flagTitle.innerText = `⚑ समीक्षणीयानि पदानि (Words to review) — ${toDevanagariDigits(open)} / ${toDevanagariDigits(flags.length)}`;
-      flagList.innerHTML = flags.map((f, i) => {
+      flagTitle.innerText = `⚑ समीक्षणीयानि पदानि (Words to review) — ${toDevanagariDigits(open)} / ${toDevanagariDigits(flags.length + userMarks.length)}`;
+      const markHtml = userMarks.map((m, i) => {
+        const where = m.section === 'sec2' ? '<span class="flag-where">२. पदच्छेदः</span>' : '';
+        const r = markRange(item, m);
+        const lost = r ? '' : '<span class="flag-lost">पाठः परिवर्तितः (text has changed)</span>';
+        return `<div class="flag-item is-mark kind-${m.target}">
+          <div class="flag-head"><span class="flag-kind">${FLAG_KIND_LABEL[m.target]}</span><span class="flag-words"><span class="flag-match">${escapeHtml(m.match)}</span></span>${where}${lost}</div>
+          <div class="flag-actions">${r ? `<button class="light-btn" onclick="showMark(${i})">दर्शयतु (Show)</button>` : ''}<button class="light-btn" onclick="clearMark(${i})" title="चिह्नं निवारयतु (Remove the mark)">निवारयतु (Clear)</button></div>
+          <div class="flag-note">${escapeHtml(m.note || '')}</div>
+        </div>`;
+      }).join('');
+      flagList.innerHTML = markHtml + flags.map((f, i) => {
         const isOpen = isFlagOpen(item, f);
         const where = f.section === 'sec2' ? '<span class="flag-where">२. पदच्छेदः</span>' : '';
         const words = `<span class="flag-match">${escapeHtml(f.match)}</span>` +
@@ -1454,7 +1642,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const actions = isOpen
           ? `<button class="light-btn" onclick="showFlag(${i})" title="पाठे दर्शयतु (Show in the text)">दर्शयतु (Show)</button>` +
             (f.suggest ? `<button class="light-btn" onclick="acceptFlag(${i})" title="सूचितं पाठं स्वीकरोतु (Use the suggested reading)">स्वीकरोतु (Accept)</button>` : '')
-          : '<span class="flag-done">✔ परिष्कृतम् (Resolved)</span>';
+          : `<span class="flag-done">${f.kind === 'reply' ? '✔ समाहितम् (Settled)' : '✔ परिष्कृतम् (Resolved)'}</span>`;
         return `<div class="flag-item kind-${f.kind}${isOpen ? '' : ' resolved'}">
           <div class="flag-head"><span class="flag-kind">${FLAG_KIND_LABEL[f.kind] || f.kind}</span><span class="flag-words">${words}</span>${where}</div>
           <div class="flag-actions">${actions}</div>
@@ -1488,6 +1676,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     if (start === -1 || !f.suggest) return;
     // Remembered so the resulting change is logged as an accepted AI suggestion
     (item.acceptedFlags = item.acceptedFlags || []).push(f);
+    item.marks = (item.marks || []).filter(m => !(m.section === f.section && m.match === f.match));
     editor.value = editor.value.slice(0, start) + f.suggest + editor.value.slice(start + f.match.length);
     if (f.section === 'sec2') handleSec2Edit(); else handleEdit();
     showToast(`✔ ${f.suggest} — स्वीकृतम् (Accepted; remember to save)`);
@@ -1520,6 +1709,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     if (item.baseline !== undefined) return;
     item.baseline = item.orig_sec1 !== undefined ? item.orig_sec1 : item.sec1;
     item.sec2Baseline = item.orig_sec2 !== undefined ? item.orig_sec2 : item.sec2;
+    if (item.marks === undefined) item.marks = (item.saved_marks || []).map(m => ({ ...m }));
     // A page the scholar already saved opens as saved (its tags come back from the saved log)
     if (item.verified) item.savedSnapshot = buildSavedMarkdown(item).content;
   }
@@ -1534,8 +1724,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     ensureBaseline(item);
     const targets = [];
     (item.flags || []).forEach(f => {
+      if (!isFlagOpen(item, f)) return;
       const at = (item[f.section] || '').indexOf(f.match);
       if (at !== -1) targets.push({ idx, sec: f.section, start: at, end: at + f.match.length });
+    });
+    (item.marks || []).forEach(m => {
+      const r = markRange(item, m);
+      if (r) targets.push({ idx, sec: m.section, start: r.start, end: r.end });
     });
     if (item.sec1 !== item.baseline) {
       pageChanges(item).staleRanges.forEach(r => targets.push({ idx, sec: 'sec2', start: r.start, end: r.end }));
@@ -2071,7 +2266,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
     const md = buildPageMarkdown({ ...item, sec1, sec3_md: sec3 });
     const log = changeLogEntries(pc, item);
-    return { content: log.length ? md + '\n' + logTableMarkdown(log) : md, log };
+    let content = log.length ? md + '\n' + logTableMarkdown(log) : md;
+    if ((item.marks || []).length) content += '\n' + marksTableMarkdown(item.marks);
+    return { content, log };
   }
 
   function applyProofView() {
@@ -2447,12 +2644,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     ocr: 'background: #fee2e2; border-bottom: 2px solid #dc2626;',
     print: 'background: #fef3c7; border-bottom: 2px solid #d97706;',
     verify: 'background: #dbeafe; border-bottom: 2px dotted #2563eb;',
-    pada: 'background: #f3e8ff; border-bottom: 2px solid #9333ea;'
+    pada: 'background: #f3e8ff; border-bottom: 2px solid #9333ea;',
+    mine: 'background: #ccfbf1; border-bottom: 2px solid #0d9488;',
+    askai: 'background: #e0e7ff; border-bottom: 2px solid #4f46e5;',
+    reply: 'background: #d1fae5; border-bottom: 2px dotted #059669;'
   };
 
   function markFlagsForExport(item, opts, review) {
     const marked = { ...item };
-    (item.flags || []).forEach(f => {
+    const markFlags = itemMarks(item).map(m => ({ section: m.section, match: m.match, kind: m.target, note: m.note }));
+    [...markFlags, ...(item.flags || [])].forEach(f => {
       if (!opts[f.section] || !isFlagOpen(item, f)) return;
       const text = marked[f.section];
       const at = text.indexOf(f.match);
@@ -2791,7 +2992,7 @@ ${bodyHtml}
       if (tag === 'strong' || tag === 'b') extra = '<w:b/><w:bCs/>';
       else if (tag === 'em' || tag === 'i') extra = '<w:i/><w:iCs/>';
       else if (child.classList.contains('review-flag')) {
-        const look = { ocr: ['FEE2E2', 'wave', 'DC2626'], print: ['FEF3C7', 'wave', 'D97706'], verify: ['DBEAFE', 'dotted', '2563EB'], pada: ['F3E8FF', 'wave', '9333EA'] }[child.dataset.kind] || ['FEF3C7', 'single', 'D97706'];
+        const look = { ocr: ['FEE2E2', 'wave', 'DC2626'], print: ['FEF3C7', 'wave', 'D97706'], verify: ['DBEAFE', 'dotted', '2563EB'], pada: ['F3E8FF', 'wave', '9333EA'], mine: ['CCFBF1', 'wave', '0D9488'], askai: ['E0E7FF', 'wave', '4F46E5'], reply: ['D1FAE5', 'dotted', '059669'] }[child.dataset.kind] || ['FEF3C7', 'single', 'D97706'];
         extra = `<w:u w:val="${look[1]}" w:color="${look[2]}"/><w:shd w:val="clear" w:color="auto" w:fill="${look[0]}"/>`;
       }
       else if (child.classList.contains('review-ref')) extra = '<w:color w:val="991B1B"/><w:vertAlign w:val="superscript"/>';
@@ -3139,6 +3340,15 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
     }
     if (e.altKey && e.key === 'ArrowLeft') prevPage();
     if (e.altKey && e.key === 'ArrowRight') nextPage();
+    if (!markDialog.hidden) {
+      if (e.key === 'Escape') { closeMarkDialog(); return; }
+      if (e.key === 'Enter') { e.preventDefault(); saveMark(); return; }
+    }
+    if (e.altKey && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM')) {
+      e.preventDefault();
+      openMarkDialog(document.activeElement === sec2Editor ? 'sec2' : (document.activeElement === sec1Editor ? 'sec1' : lastEditorSec));
+      return;
+    }
     if (e.altKey && e.key === 'ArrowDown') { e.preventDefault(); gotoReview(1); }
     if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); gotoReview(-1); }
   });
@@ -3187,20 +3397,23 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
     showToast('समविभाजनम् स्थापितम् (Reset pane split)');
   });
 
+  sec1Editor.addEventListener('focus', () => { lastEditorSec = 'sec1'; });
+  sec2Editor.addEventListener('focus', () => { lastEditorSec = 'sec2'; });
+
   if (data.length > 0) switchPage(0);
 </script>
 </body>
 </html>"""
 
-def generate_viewer(standalone=False, verified_dir=VERIFIED_DIR):
+def generate_viewer(standalone=False, verified_dir=VERIFIED_DIR, review_flags_json=REVIEW_FLAGS_JSON):
     md_files = sorted(glob.glob(os.path.join(RAW_DIR, "page_*.md")))
     if not md_files:
         print(f"[Error] No markdown files found in {RAW_DIR}/.")
         return
 
     review_flags = {}
-    if os.path.exists(REVIEW_FLAGS_JSON):
-        with open(REVIEW_FLAGS_JSON, "r", encoding="utf-8") as f:
+    if os.path.exists(review_flags_json):
+        with open(review_flags_json, "r", encoding="utf-8") as f:
             review_flags = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
 
     pages_data = []
@@ -3236,7 +3449,8 @@ def generate_viewer(standalone=False, verified_dir=VERIFIED_DIR):
             with open(verified_path, "r", encoding="utf-8") as v_f:
                 verified_text = v_f.read()
             extra = {"verified": True, "orig_sec1": sec1, "orig_sec2": sec2,
-                     "saved_log": parse_correction_log(verified_text)}
+                     "saved_log": parse_correction_log(verified_text),
+                     "saved_marks": parse_review_marks(verified_text)}
             sec1, sec2, sec3_md, sec3_html = parse_sections(verified_text)
 
         pages_data.append({
@@ -3268,5 +3482,7 @@ if __name__ == "__main__":
                         help=f"write a single offline file with embedded scans to {STANDALONE_HTML} instead of {SITE_HTML}")
     parser.add_argument("--verified-dir", default=VERIFIED_DIR,
                         help=f"folder of pages saved by the scholar, shown instead of the raw OCR (default: {VERIFIED_DIR})")
+    parser.add_argument("--review-flags", default=REVIEW_FLAGS_JSON,
+                        help=f"review flags file (default: {REVIEW_FLAGS_JSON})")
     args = parser.parse_args()
-    generate_viewer(standalone=args.standalone, verified_dir=args.verified_dir)
+    generate_viewer(standalone=args.standalone, verified_dir=args.verified_dir, review_flags_json=args.review_flags)

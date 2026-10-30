@@ -83,3 +83,12 @@ When asked to update padaccheda after the scholar's corrections, run `python3 sc
 * Write the padaccheda of the **corrected source** sentence, following Section 2 rules above. Keep the same dandas and the same sentence boundaries, and keep the parts of the current padaccheda that are still correct.
 * If the current padaccheda already fits the corrected source, leave `suggest` empty (nothing is proposed).
 * Put the new sentence in the matching entry's `suggest` in `output/corrections/padaccheda_flags.json`, then run `python3 scripts/padaccheda_worklist.py --merge output/corrections/padaccheda_flags.json` and rebuild the portal.
+
+## Answering Words the Scholar Asked the AI to Check
+
+When asked to answer the scholar's marks, run `python3 scripts/review_marks.py` and read `output/corrections/ai_review_requests.md`. For each marked word:
+
+* Check it against the scan (`page_images/page_XXX.png`) and against the grammar of its sentence, taking the scholar's note into account.
+* **If a change is needed:** put the corrected text in `suggest`, set `kind` to `ocr` (misread), `print` (misprint in the book) or `pada` (padaccheda), and explain in `note`.
+* **If no change is needed:** leave `suggest` empty, keep `kind: "reply"`, and give the reasoning in `note` (e.g. the sandhi or compound analysis).
+* Then run `python3 scripts/review_marks.py --merge output/corrections/ai_review_replies.json` and rebuild the portal.
