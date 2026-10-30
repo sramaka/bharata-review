@@ -1233,7 +1233,7 @@
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toastEl.classList.remove('show');
-    }, 2400);
+    }, msg.length > 60 ? 4500 : 2400);
   }
 
   function autoResize(textarea) {
@@ -3094,7 +3094,7 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
     saveBtn.style.background = '#d97706';
 
     try {
-      await fetch(APPS_SCRIPT_URL, {
+      const res = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
@@ -3105,12 +3105,27 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
           saved_at: new Date().toISOString()
         })
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // The backend replies {ok, github: {ok, error?}, drive: {ok, error?}}
+      let reply = null;
+      try { reply = JSON.parse(await res.text()); } catch (e) { /* older backend without a JSON reply */ }
+      if (reply && reply.ok === false) {
+        throw new Error(reply.error || (reply.github && reply.github.error) || (reply.drive && reply.drive.error) || 'unknown error');
+      }
+      const where = reply && reply.github && reply.github.ok
+        ? (reply.drive && reply.drive.ok ? 'GitHub + Drive' : 'GitHub')
+        : 'Drive';
 
       item.savedSnapshot = outContent;
       updateStatus();
       saveBtn.innerText = '✔ रक्षितम् (Saved!)';
       saveBtn.style.background = '#059669';
-      showToast(`✔ ${pageLabel(item)} सुरक्षितम् (Saved to Drive)`);
+      showToast(where.startsWith('GitHub')
+        ? `✔ ${pageLabel(item)} सुरक्षितम् (Saved to ${where}; the live site updates in about 2 minutes)`
+        : `✔ ${pageLabel(item)} सुरक्षितम् (Saved to Drive)`);
+      if (reply && reply.github && reply.github.ok && reply.drive && !reply.drive.ok) {
+        console.warn('Drive backup failed:', reply.drive.error);
+      }
       saveResetTimer = setTimeout(resetSaveButton, 2000);
     } catch (err) {
       alert("रक्षणे दोषः जातः (Save failed): " + err.message);

@@ -1,0 +1,56 @@
+# Rebuilds index.html whenever a verified page is saved from the portal (the Apps Script
+# commits output/verified/page_XXX.md) or the page sources change, so the live site at
+# https://sramaka.github.io/bharata-review/ shows the latest saved text, tags and marks.
+name: Rebuild review site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "output/verified/**"
+      - "output/raw/**"
+      - "output/review_flags.json"
+      - "scripts/build_html_review.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Builds run one after another; each builds from the latest main, so a queued build covers
+# every save made while the previous one was running.
+concurrency:
+  group: rebuild-site
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Uses the committed page_web/ images; the 300 DPI scans are not in the repo
+      - name: Build index.html
+        run: python3 scripts/build_html_review.py
+
+      - name: Commit the rebuilt site
+        run: |
+          git add index.html page_web
+          if git diff --cached --quiet; then
+            echo "Site already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Rebuild review site"
+          # A save may land while building; rebase onto it (it never touches index.html)
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 5
+          done
+          exit 1

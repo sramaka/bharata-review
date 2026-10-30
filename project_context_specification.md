@@ -1,7 +1,7 @@
 # Bhārata Saṅgraha Sanskrit OCR & Scholar Review Pipeline
 
 ## 1. Project Mission & Objective
-Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgraha* by Mahāmahopādhyāya M. Lakshmana Suri. The project combines local vision-based OCR extraction, automated sandhi analysis, and a web-based, scholar-friendly proofreading interface hosted on GitHub Pages that saves verified edits back to Google Drive without requiring logins or technical knowledge.
+Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgraha* by Mahāmahopādhyāya M. Lakshmana Suri. The project combines local vision-based OCR extraction, automated sandhi analysis, and a web-based, scholar-friendly proofreading interface hosted on GitHub Pages that saves verified edits back to the GitHub repo (with a Google Drive backup) without requiring logins or technical knowledge.
 
 ---
 
@@ -11,7 +11,8 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 - **Python Environment:** Python 3.12+ virtual environment (`venv/`)
 - **Key Python Packages:** `pymupdf` (page extraction, and web-image generation in the portal builder; the local server uses the standard library only)
 - **Deployment Platform:** GitHub Pages (`https://sramaka.github.io/bharata-review/`), served from the root `index.html` on `main`
-- **Backend Sync Webhook:** Google Apps Script Web App (URL set in `APPS_SCRIPT_URL` at the top of `scripts/build_html_review.py`). It receives zero-token POST payloads `{page, content}` and writes them directly to Google Drive (`bharata_verified_pages/`).
+- **Backend Sync Webhook:** Google Apps Script Web App (code in `apps_script/Code.gs`; URL set in `APPS_SCRIPT_URL` at the top of `scripts/build_html_review.py`). It receives POST payloads `{page, content, log, saved_at}` from the portal, commits `output/verified/page_XXX.md` to this repo through the GitHub Contents API, and writes a backup copy to Google Drive (`bharata_verified_pages/`). The GitHub token (fine-grained, Contents read/write on `sramaka/bharata-review` only) is kept in the script's Script Properties as `GITHUB_TOKEN` and never reaches the browser. Without the token it saves to Drive only. Opening the web app URL in a browser (GET) reports whether GitHub saving is set up.
+- **Site Rebuild:** `.github/workflows/rebuild-site.yml` rebuilds `index.html` on every push to `main` that touches `output/verified/`, `output/raw/`, `output/review_flags.json` or the builder, and commits it as `github-actions[bot]`. A saved page shows on the live site about two minutes after saving. The build uses the committed `page_web/` images, since the 300 DPI scans are not in the repo.
 
 ---
 
@@ -19,6 +20,8 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 
 ```text
 ~/ocr_bharata_sangrahaha/
+├── .github/workflows/rebuild-site.yml         # Rebuilds index.html on GitHub when a page is saved
+├── apps_script/Code.gs                        # Save backend (Google Apps Script): commits saves to GitHub + Drive backup
 ├── config/
 │   └── agent_rules.md                         # Guidelines + template for 3-section Sanskrit transcription
 ├── input_pdf/                                 # (git-ignored)
@@ -26,7 +29,7 @@ Digitize, transcribe, and verify the classical Sanskrit work *Bhārata Saṅgrah
 ├── page_images/                               # (git-ignored) 300 DPI renderings (page_015.png … page_032.png)
 ├── output/
 │   ├── raw/                                   # Agent-generated OCR markdown (page_015.md … page_032.md), committed
-│   ├── verified/                              # Scholar-verified final markdown files
+│   ├── verified/                              # Scholar-verified pages, committed by the portal's save
 │   ├── review_flags.json                      # Words flagged for scholar review (shown in the portal)
 │   ├── corrections/                           # corrections.jsonl + summary.md built from the correction logs
 │   └── proofread_bundle.html                  # (git-ignored) Optional offline portal with embedded scans (--standalone)
@@ -136,7 +139,7 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
   - **Word export** produces a real `.docx` (Office Open XML). It is generated in the browser from the same export markup as the PDF and packed by a small built-in zip writer, with no external libraries. It uses named styles: `Source Text`, `Padaccheda`, `Padaccheda Centred`, `Body English`, Heading 1–3, `Notes Heading`, `Title`, and `toc 1`/`toc 2`. The table of contents is a real Word TOC field, pre-filled with linked entries; right-click → Update Field adds Word page numbers. Notes are Word tables with a repeating header row, and the footer has a PAGE field (none on the title page). Word shows the chosen text font (default Tiro Devanagari Sanskrit) only if it is installed on that computer.
   - Headings are real H1 (parts) / H2 (sections) / H3 (page markers, when page numbers are on), so Word's Navigation Pane and PDF links work. The in-app preview shows the same table of contents and headings. Exported files are named `bharata_sangraha_<first>_to_<last>` after the PDF pages included.
   - `Esc` closes the modal.
-- **Zero-Prompt Persistence:** Clicking **💾 रक्षतु (Save)** POSTs `{page, content}` (the full 3-section Markdown) to the Google Apps Script Web App URL as `text/plain`, persisting `page_XXX.md` to `bharata_verified_pages/` in Google Drive. The button then shows `✔ रक्षितम्` along with a toast.
+- **Zero-Prompt Persistence:** Clicking **💾 रक्षतु (Save)** POSTs `{page, content, log, saved_at}` (the full saved Markdown) to the Google Apps Script Web App URL as `text/plain`. The script commits it to `output/verified/page_XXX.md` on GitHub and copies it to Drive. The portal reads the JSON reply `{ok, github: {ok, commit|error}, drive: {ok, error?}}`. It marks the page saved only on success, with a toast naming where it was saved. A failure (`ok: false` or an HTTP error) shows an alert and leaves the page marked unsaved. A reply that is not JSON (an older script) counts as a Drive save.
 
 ### Local Review Server (`scripts/local_review_and_direct_save_server.py`)
 Serves the repo root (the portal is at `http://localhost:8000/`) with CORS enabled. It also exposes `POST /save_verified`, which takes a JSON body `{page, content}` and writes it to `output/verified/page_XXX.md`.
@@ -199,4 +202,12 @@ venv/bin/python scripts/build_html_review.py
 ```
 
 ### H. Syncing Verified Files from Scholar
-Scholar edits land in Google Drive folder `bharata_verified_pages/`. Verified pages are periodically pulled down into `output/verified/` for archival and downstream corpus generation. This step is manual, and `output/verified/` is currently empty.
+Scholar saves are committed straight to `output/verified/` on `main` by the Apps Script, and the GitHub Action rebuilds the site. Locally, **run `git pull` before working**, since both the saves and the site rebuilds arrive as new commits. Drive (`bharata_verified_pages/`) keeps a backup copy of each save.
+
+**One-time setup of GitHub saving:**
+1. On GitHub, go to Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token. Set Repository access to *Only select repositories* → `sramaka/bharata-review`, and Permissions to *Contents: Read and write*. Choose an expiry and note it: once the token expires, every save shows an error until you put a new token in Script Properties.
+2. In the Apps Script project, replace the code with `apps_script/Code.gs`. Under Project Settings → Script Properties, add `GITHUB_TOKEN` with the token.
+3. Go to Deploy → Manage deployments → edit the existing deployment → Version: *New version* → Deploy. This keeps the URL in the portal unchanged. Authorise the new permission (external requests) when asked.
+4. Open the web app URL in a browser: it should show `"github":true`.
+
+Anyone holding the web app URL (it is in the public `index.html`) can save pages. Saves are limited to `output/verified/page_NNN.md` files containing a मूलपाठः section, and every save is a git commit, so it can be reviewed and reverted.
