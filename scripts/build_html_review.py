@@ -1148,7 +1148,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <strong>पृष्ठसन्धि-संयोजनम् (Join Split Words)</strong>
         </label>
         <label title="प्रस्तावना, कृतयः, विषयसूची च (Include the Foreword, Works and Contents before the main text)">
-          <input type="checkbox" id="optFrontMatter" onchange="refreshCompiledView()">
+          <input type="checkbox" id="optFrontMatter" checked onchange="refreshCompiledView()">
           प्रस्तावनादि (Front Matter)
         </label>
         <label title="समीक्षणीयानि पदानि चिह्नयतु (Mark the words flagged for review, with a list at the end of each section)">

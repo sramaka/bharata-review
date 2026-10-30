@@ -94,7 +94,7 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
 - **Copy Actions:** Per-section copy buttons; "Copy page text" and "Copy page with notes" are in the ⚙ menu. Where the browser supports it, the copied content is rich HTML that pastes cleanly into Word / Google Docs.
 - **Complete Text View (सम्पूर्णः ग्रन्थः):** A modal that compiles all pages into one reader-friendly text, using the current in-browser edits.
   - Options choose which sections to include (1/2/3), show page-number headers, and join words hyphenated across page breaks (पृष्ठसन्धि-संयोजनम्, on by default).
-  - Front matter (Foreword, Works, Contents) is left out unless **प्रस्तावनादि (Front Matter)** is ticked. When it is included, it comes first, English pages use a Latin font, and a rule separates it from the main text.
+  - Front matter (Foreword, Works, Contents) is included by default via **प्रस्तावनादि (Front Matter)**; untick it for the main text only. When it is included, it comes first, English pages use a Latin font, and a rule separates it from the main text.
   - Text is compiled per section (Foreword, each parva, …), so one section never runs on into the next. With only Section 1 selected, joining on, and page numbers off, each section renders as one continuous flow. Page headers use the section label (e.g. `आदिपर्व · पृ. ३ (PDF 017)`).
   - Exports: **Rich Copy**, **Word (.docx)**, **PDF / Print** (opens a print window, so pop-ups must be allowed), and **Markdown (.md)**.
   - Word and PDF exports are laid out as a book:
