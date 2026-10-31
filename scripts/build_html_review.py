@@ -167,6 +167,31 @@ def parse_review_marks(md_text):
         })
     return marks
 
+def parse_kept_flags(md_text):
+    """Rows of the '६. यथावत्स्वीकृतानि (Kept as Is)' table: flagged words the scholar confirmed as correct."""
+    lines = md_text.splitlines()
+    start = next((i for i, l in enumerate(lines) if "६. यथावत्स्वीकृत" in l), None)
+    if start is None:
+        return []
+    kept = []
+    for line in lines[start + 1:]:
+        s = line.strip()
+        if s.startswith("## "):
+            break
+        if not (s.startswith("|") and s.endswith("|")) or re.match(r"^\|[\s\-:|]+\|$", s):
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) < 5 or cells[0] == "सङ्ख्या":
+            continue
+        kind = re.search(r"\((\w+)\)$", cells[3])
+        kept.append({
+            "section": CORRECTION_SECTION_BY_LABEL.get(cells[1], cells[1]),
+            "match": cells[2].replace(" ↵ ", "\n"),
+            "kind": kind.group(1) if kind else "",
+            "note": cells[4],
+        })
+    return kept
+
 def parse_sections(raw_md):
     lines = raw_md.splitlines()
     sec1_lines = []
@@ -182,7 +207,7 @@ def parse_sections(raw_md):
         elif "३. सम्पादन" in s or "सम्पादनटिप्पण्य" in s:
             current_sec = 3
             continue
-        elif "४. संशोधनलेख" in s or "५. समीक्षाचिह्न" in s:
+        elif "४. संशोधनलेख" in s or "५. समीक्षाचिह्न" in s or "६. यथावत्स्वीकृत" in s:
             # Correction log written by the portal on save; not part of the text
             current_sec = 4
             continue
@@ -1792,7 +1817,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   function pageStatus(item) {
     if (item.baseline === undefined) return 'unreviewed';
-    const changed = item.sec1 !== item.baseline || item.sec2 !== item.sec2Baseline || (item.marks || []).length > 0;
+    const changed = item.sec1 !== item.baseline || item.sec2 !== item.sec2Baseline ||
+      (item.marks || []).length > 0 || (item.kept || []).length > 0;
     if (item.savedSnapshot !== undefined) {
       return buildSavedMarkdown(item).content === item.savedSnapshot ? 'saved' : 'edited';
     }
@@ -1994,8 +2020,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   // A flag is open while its text is still there; an AI reply (no suggestion) only while the
   // reviewer's mark on the same word remains
+  function itemKept(item) {
+    return item.kept || item.saved_kept || [];
+  }
+
+  function isKept(item, f) {
+    return itemKept(item).some(k => k.section === f.section && k.match === f.match);
+  }
+
   function isFlagOpen(item, f) {
     if (!(item[f.section] || '').includes(f.match)) return false;
+    if (isKept(item, f)) return false;
     if (f.kind === 'reply') return itemMarks(item).some(m => m.section === f.section && m.match === f.match);
     return true;
   }
@@ -2076,6 +2111,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       '| :--- | :--- | :--- | :--- | :--- | :--- |', ...rows].join('\n') + '\n';
   }
 
+  function keptTableMarkdown(kept) {
+    const rows = kept.map((k, i) =>
+      `| ${toDevanagariDigits(i + 1)} | ${SEC_LABEL[k.section]} | ${mdCell(k.match)} | ${(FLAG_KIND_LABEL[k.kind] || '').split(' (')[0]} (${k.kind}) | ${k.note ? mdCell(k.note) : ''} |`);
+    return ['## ६. यथावत्स्वीकृतानि (Kept as Is)', '',
+      '| सङ्ख्या | विभागः | पदम् | प्रकारः | टिप्पणी |',
+      '| :--- | :--- | :--- | :--- | :--- |', ...rows].join('\n') + '\n';
+  }
+
   function flagRanges(text, match) {
     const ranges = [];
     for (let i = text.indexOf(match); match && i !== -1; i = text.indexOf(match, i + match.length)) {
@@ -2133,10 +2176,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const where = f.section === 'sec2' ? '<span class="flag-where">२. पदच्छेदः</span>' : '';
         const words = `<span class="flag-match">${escapeHtml(f.match)}</span>` +
           (f.suggest ? ` → <span class="flag-suggest">${escapeHtml(f.suggest)}</span>` : '');
+        const kept = isKept(item, f) && (item[f.section] || '').includes(f.match);
         const actions = isOpen
           ? `<button class="light-btn" onclick="showFlag(${i})" title="पाठे दर्शयतु (Show in the text)">दर्शयतु (Show)</button>` +
-            (f.suggest ? `<button class="light-btn" onclick="acceptFlag(${i})" title="सूचितं पाठं स्वीकरोतु (Use the suggested reading)">स्वीकरोतु (Accept)</button>` : '')
-          : `<span class="flag-done">${f.kind === 'reply' ? '✔ समाहितम् (Settled)' : '✔ परिष्कृतम् (Resolved)'}</span>`;
+            (f.suggest ? `<button class="light-btn" onclick="acceptFlag(${i})" title="सूचितं पाठं स्वीकरोतु (Use the suggested reading)">स्वीकरोतु (Accept)</button>` : '') +
+            (f.kind !== 'reply' ? `<button class="light-btn" onclick="keepFlag(${i})" title="पाठः शुद्धः, यथावत् रक्षतु (The text is correct as it stands; clear the flag)">✔ यथावत् (Keep as is)</button>` : '')
+          : kept
+            ? `<span class="flag-done">✔ यथावत् स्वीकृतम् (Kept as is)</span><button class="light-btn" onclick="unkeepFlag(${i})" title="पुनः समीक्षणीयं करोतु (Flag it again)">↺ पुनः (Undo)</button>`
+            : `<span class="flag-done">${f.kind === 'reply' ? '✔ समाहितम् (Settled)' : '✔ परिष्कृतम् (Resolved)'}</span>`;
         return `<div class="flag-item kind-${f.kind}${isOpen ? '' : ' resolved'}">
           <div class="flag-head"><span class="flag-kind">${FLAG_KIND_LABEL[f.kind] || f.kind}</span><span class="flag-words">${words}</span>${where}</div>
           <div class="flag-actions">${actions}</div>
@@ -2174,6 +2221,25 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     editor.value = editor.value.slice(0, start) + f.suggest + editor.value.slice(start + f.match.length);
     if (f.section === 'sec2') handleSec2Edit(); else handleEdit();
     showToast(`✔ ${f.suggest} — स्वीकृतम् (Accepted; remember to save)`);
+  }
+
+  // The scholar confirms the flagged text is right as it stands; saved with the page
+  function keepFlag(i) {
+    const item = data[currentIndex];
+    const f = item.flags[i];
+    item.kept = item.kept || [];
+    if (!isKept(item, f)) item.kept.push({ section: f.section, match: f.match, kind: f.kind, note: '' });
+    renderFlags();
+    updateStatus();
+    showToast(`✔ ${f.match} — यथावत् स्वीकृतम् (Kept as is; remember to save)`);
+  }
+
+  function unkeepFlag(i) {
+    const item = data[currentIndex];
+    const f = item.flags[i];
+    item.kept = (item.kept || []).filter(k => !(k.section === f.section && k.match === f.match));
+    renderFlags();
+    updateStatus();
   }
 
   function updateStatus() {
@@ -2347,6 +2413,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     item.baseline = item.orig_sec1 !== undefined ? item.orig_sec1 : item.sec1;
     item.sec2Baseline = item.orig_sec2 !== undefined ? item.orig_sec2 : item.sec2;
     if (item.marks === undefined) item.marks = (item.saved_marks || []).map(m => ({ ...m }));
+    if (item.kept === undefined) item.kept = (item.saved_kept || []).map(k => ({ ...k }));
     // A page the scholar already saved opens as saved (its tags come back from the saved log)
     if (item.verified) item.savedSnapshot = buildSavedMarkdown(item).content;
   }
@@ -2907,6 +2974,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const log = changeLogEntries(pc, item);
     let content = log.length ? md + '\n' + logTableMarkdown(log) : md;
     if ((item.marks || []).length) content += '\n' + marksTableMarkdown(item.marks);
+    if ((item.kept || []).length) content += '\n' + keptTableMarkdown(item.kept);
     return { content, log };
   }
 
@@ -4200,7 +4268,8 @@ def generate_viewer(standalone=False, verified_dir=VERIFIED_DIR, review_flags_js
                 verified_text = v_f.read()
             extra = {"verified": True, "orig_sec1": sec1, "orig_sec2": sec2,
                      "saved_log": parse_correction_log(verified_text),
-                     "saved_marks": parse_review_marks(verified_text)}
+                     "saved_marks": parse_review_marks(verified_text),
+                     "saved_kept": parse_kept_flags(verified_text)}
             sec1, sec2, sec3_md, sec3_html = parse_sections(verified_text)
 
         pages_data.append({

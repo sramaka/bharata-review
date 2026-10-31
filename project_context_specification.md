@@ -128,7 +128,8 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
   - There are three kinds: `ocr` (transcription differs from the scan; red wavy highlight), `print` (matches the scan but is probably a misprint; amber), and `verify` (unclear in the scan; blue dotted).
   - Flagged words are highlighted inside the editors by a layer drawn behind the transparent textarea.
   - A ⚑ card above Section 1 lists the flags with notes. **दर्शयतु (Show)** selects the word in the text. **स्वीकरोतु (Accept)** applies the suggestion as a normal edit, so it appears in the proof marks and still needs saving.
-  - A flag counts as resolved once its text no longer appears. The page button and page panel show the number of open review items (⚑n).
+  - A flag counts as resolved once its text no longer appears, or once the scholar clicks **✔ यथावत् (Keep as is)** to confirm the text is correct as it stands. The page button and page panel show the number of open review items (⚑n).
+  - Kept flags are saved with the page as a `## ६. यथावत्स्वीकृतानि (Kept as Is)` table (section, word, kind, note), so they stay cleared after the site rebuilds. **↺ पुनः (Undo)** reopens one.
   - The transcriptions themselves are not changed by flagging.
   - **In exports:** the Complete Text option **⚑ समीक्षणीयानि (Mark Words to Review)**, on by default, marks each open flag in the Word/PDF/copied text. The word gets the flag's colour and a numbered ⚑n superscript, and a "Words to Review" list (number, word → suggestion, page, kind, note) closes each section. Plain-text copies show `word[⚑n]`. Accepted or edited-away flags are left out; untick the option for a clean copy.
 - **Copy Actions:** Per-section copy buttons; "Copy page text" and "Copy page with notes" are in the ⚙ settings drawer. Where the browser supports it, the copied content is rich HTML that pastes cleanly into Word / Google Docs.
