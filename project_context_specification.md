@@ -114,7 +114,7 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
 - **Correction Log:** The proof-marks panel lists every change from the original OCR (Section 1) and the AI padaccheda (Section 2), and the reviewer tags each one.
   - Section 1 changes are tagged `🔍 OCR-दोषः` (OCR misread the scan; the default), `⚠️ मुद्रणदोषः` (misprint in the printed book), or `✏️ अन्यत्` (other). Section 2 changes are tagged `✂️ पदच्छेददोषः` (AI padaccheda error; the default) or `✏️ अन्यत्`.
   - Changes that come from an accepted review flag are marked as AI suggestions. A flag of kind `print` defaults to मुद्रणदोषः.
-  - Each change can carry a short note.
+  - Each change can carry a short note. A change made by accepting an AI suggestion starts with the AI's reason (the flag's `note`) as its note, which the reviewer can keep, edit or replace.
   - On save, the page gets a `## ४. संशोधनलेखः (Correction Log)` table: number, section, kind, before, after, context, source (reviewer / AI flag accepted) and note. The save payload also carries the same entries as a `log` array, with `saved_at`.
   - Misprints are not silently emended: the saved मूलपाठः keeps the printed reading, and the correction is appended to the Section 3 apparatus as a `⚠️ मुद्रणदोषः` row.
   - The builder ignores Section 4 when reading the page text, but uses it to restore tags, notes and padaccheda status when the page reopens. Misprint entries are carried forward on later saves.

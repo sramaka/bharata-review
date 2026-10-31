@@ -2693,7 +2693,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           sec, key, hunk: h, hunkIndex: hi,
           category: tag && CHANGE_CATEGORIES[tag] && CHANGE_CATEGORIES[tag].secs.includes(sec) ? tag : defaultCategory(sec, h, flag),
           source: flag || (saved && saved.source === 'ai') ? 'ai' : 'reviewer',
-          note: item.changeNotes[key] !== undefined ? item.changeNotes[key] : (saved ? saved.note : ''),
+          // An accepted AI suggestion starts with the AI's reason as its note; the reviewer may edit it
+          note: item.changeNotes[key] !== undefined ? item.changeNotes[key] : (saved ? saved.note : (flag && flag.note) || ''),
           before: contextText(ops, h.first - 1, -1),
           after: contextText(ops, h.last + 1, 1)
         };
