@@ -112,6 +112,22 @@ function saveToGitHub(token, page, content, savedAt) {
   }
 }
 
+/**
+ * Run this once from the editor (select testGitHub → ▶ Run) to grant the "connect to an
+ * external service" permission and check the token: the log shows the repo GitHub sees.
+ */
+function testGitHub() {
+  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  if (!token) throw new Error('GITHUB_TOKEN is not set in Project Settings → Script Properties');
+  const res = UrlFetchApp.fetch('https://api.github.com/repos/' + GITHUB_OWNER + '/' + GITHUB_REPO, {
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+    muteHttpExceptions: true,
+  });
+  const body = JSON.parse(res.getContentText());
+  Logger.log('GitHub replied ' + res.getResponseCode() + ': ' +
+             (body.full_name ? body.full_name + ', can push: ' + (body.permissions && body.permissions.push) : body.message));
+}
+
 function reply(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
