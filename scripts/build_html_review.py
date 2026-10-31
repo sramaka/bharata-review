@@ -1024,6 +1024,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .change-meta select:hover { background: #fafaf9; border-color: #a8a29e; }
   .change-note { flex: 1; min-width: 160px; font-family: inherit; }
   .change-hint { width: 100%; font-size: 12px; color: #78716c; }
+  .saved-badge { font-size: 12px; font-weight: 600; color: #92400e; }
   .proof-full-label { font-size: 13px; font-weight: 600; color: #92400e; margin: 8px 0 2px 0; font-family: 'Noto Sans Devanagari', system-ui, sans-serif; white-space: normal; }
   .proof-full {
     font-family: var(--font-family);
@@ -1351,6 +1352,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   [data-theme="dark"] .proof-panel { background: #221a0b; border-color: #78350f; border-top-color: #d97706; }
   [data-theme="dark"] .proof-head, [data-theme="dark"] .change-sec, [data-theme="dark"] .proof-full-label { color: #fcd34d; }
   [data-theme="dark"] .change-item { background: #1a2332; border-color: #78350f; }
+  [data-theme="dark"] .saved-badge { color: #fcd34d; }
   [data-theme="dark"] .change-text { background: #1a2332; color: #e2e8f0; }
   [data-theme="dark"] .change-text:hover:not(:disabled) { background: #2a2410; }
   [data-theme="dark"] .change-meta select, [data-theme="dark"] .change-meta input { background: #0f1623; color: #e2e8f0; border-color: #334155; }
@@ -2031,6 +2033,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   function isFlagOpen(item, f) {
     if (!(item[f.section] || '').includes(f.match)) return false;
     if (isKept(item, f)) return false;
+    if (f.section === 'sec1' && savedMisprints(item).some(e => e.before.trim() && f.match.includes(e.before.trim()) &&
+      (!f.suggest || f.suggest.includes(e.after.trim())))) return false;
     if (f.kind === 'reply') return itemMarks(item).some(m => m.section === f.section && m.match === f.match);
     return true;
   }
@@ -2820,12 +2824,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const pc = pageChanges(item);
     currentChanges = [...pc.sec1.changes, ...pc.sec2.changes];
     currentStaleRanges = pc.staleRanges;
-    proofPanel.hidden = !currentChanges.length;
-    if (!currentChanges.length) return;
+    currentSavedMisprints = savedMisprints(item, pc);
+    proofPanel.hidden = !currentChanges.length && !currentSavedMisprints.length;
+    if (proofPanel.hidden) return;
 
     const n = currentChanges.length;
     const stale = currentChanges.filter(c => c.pada && (c.pada.status === 'stale' || c.pada.status === 'unknown')).length;
+    const sm = currentSavedMisprints.length;
     proofTitle.innerText = `दृष्टं शोधनम् — ${toDevanagariDigits(n)} परिवर्तन${n === 1 ? 'म्' : 'ानि'} (${n} change${n === 1 ? '' : 's'})` +
+      (sm ? ` · ⚠️ ${toDevanagariDigits(sm)} रक्षित-मुद्रणदोष${sm === 1 ? 'ः' : 'ाः'} (${sm} saved misprint${sm === 1 ? '' : 's'})` : '') +
       (stale ? ` · ⚠ ${toDevanagariDigits(stale)} पदच्छेदः अद्यतनीयः` : '');
 
     proofList.innerHTML = currentChanges.map((c, i) => {
@@ -2846,6 +2853,18 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           ${padaStatusHtml(c, i)}
         </div>
       </div>`;
+    }).join('') + currentSavedMisprints.map((e, i) => {
+      const m = (e.context || '').match(/^…(.*?) \[.*\] (.*?)…$/);
+      const source = e.source === 'ai' ? ' · ⚑ AI' : '';
+      return `<div class="change-item saved-misprint">
+        <button class="change-text" onclick="showSavedMisprint(${i})" title="पाठे दर्शयतु (Show in editor)"><span class="change-sec">मूलपाठः${source}</span><span class="ctx">…${escapeHtml(m ? m[1] : '')}</span><del>${escapeHtml(e.before)}</del> → <ins>${escapeHtml(e.after)}</ins><span class="ctx">${escapeHtml(m ? m[2] : '')}…</span></button>
+        <div class="change-meta">
+          <span class="saved-badge">⚠️ मुद्रणदोषः — रक्षितः (saved misprint)</span>
+          <button class="light-btn" onclick="reopenSavedMisprint(${i}, true)" title="शोधनं पुनः उद्घाटयतु: प्रकारं टिप्पणीं वा परिवर्तयतु (Reopen the correction to change its type or note)">✎ सम्पादयतु (Edit)</button>
+          <button class="light-btn danger-btn" onclick="reopenSavedMisprint(${i}, false)" title="मुद्रणदोषं सूच्याः निष्कासयतु; मुद्रितः पाठः यथावत् (Remove the misprint; the printed reading stays)">✕ निष्कासयतु (Remove)</button>
+          ${e.note ? `<span class="change-hint">${escapeHtml(e.note)}</span>` : ''}
+        </div>
+      </div>`;
     }).join('');
 
     const fullHtml = ops => ops.map(([op, tok]) => {
@@ -2857,6 +2876,51 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       .map(([sec, label]) => `<div class="proof-full-label">${label}</div>${fullHtml(pc[sec].ops)}`).join('\n');
 
     applyProofView();
+  }
+
+  let currentSavedMisprints = [];
+
+  // Where a saved misprint's printed reading is in मूलपाठः, found by its logged context
+  function locateSavedMisprint(item, e) {
+    const words = t => (t || '').trim().split(/\s+/).filter(Boolean)
+      .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+    const core = words(e.before);
+    if (!core) return null;
+    const m = (e.context || '').match(/^…(.*?) \[.*\] (.*?)…$/);
+    const ctxB = words(m && m[1]), ctxA = words(m && m[2]);
+    for (const [b, a] of [[ctxB, ctxA], ['', ctxA], [ctxB, '']]) {
+      if (!b && !a) continue;
+      const hit = new RegExp(`${b ? `(?:${b})\\s*` : ''}(${core})${a ? `\\s*(?:${a})` : ''}`, 'd').exec(item.sec1);
+      if (hit) return { start: hit.indices[1][0], end: hit.indices[1][1] };
+    }
+    const all = flagRanges(item.sec1, e.before.trim());
+    return all.length === 1 ? { start: all[0][0], end: all[0][1] } : null;
+  }
+
+  function showSavedMisprint(i) {
+    const r = locateSavedMisprint(data[currentIndex], currentSavedMisprints[i]);
+    if (r) jumpToChange(r.start, r.end, sec1Editor);
+  }
+
+  // Edit: put the correction back into the text as a live change (it comes back tagged as a
+  // misprint with its note, from the saved log). Remove: drop it, keeping the printed reading.
+  function reopenSavedMisprint(i, edit) {
+    const item = data[currentIndex];
+    const e = currentSavedMisprints[i];
+    const r = edit ? locateSavedMisprint(item, e) : null;
+    if (edit && !r) { showToast('मुद्रितः पाठः न लब्धः (Could not find the printed reading in the text)'); return; }
+    if (!edit && !confirm(`${e.before} → ${e.after}: मुद्रणदोषं निष्कासयतु? (Remove this misprint from the list?)`)) return;
+    (item.reopenedMisprints = item.reopenedMisprints || []).push({ before: e.before, after: e.after });
+    if (edit) {
+      sec1Editor.value = item.sec1.slice(0, r.start) + e.after + item.sec1.slice(r.end);
+      handleEdit();
+      showToast('✎ अधः प्रकारं टिप्पणीं च परिवर्तयतु (Change the type or note below, then save)');
+    } else {
+      refreshProofPanel();
+      renderFlags();
+      updateStatus();
+      showToast('✕ निष्कासितम् (Removed; remember to save)');
+    }
   }
 
   function confirmPada(i, confirmed) {
@@ -2911,20 +2975,51 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     return t || '∅';
   }
 
-  // Misprints are recorded in the apparatus table rather than silently emended in मूलपाठः
-  function appendApparatusRows(sec3, misprints) {
-    const lines = sec3 ? sec3.split('\n') : [];
+  // Misprints are recorded in the apparatus table rather than silently emended in मूलपाठः.
+  // The reviewer's earlier rows for the same misprints, or for reopened ones, are replaced.
+  const REVIEWER_MISPRINT_NOTE = 'संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer)';
+
+  function updateApparatusRows(sec3, misprints, reopened) {
     const isRow = l => /^\s*\|/.test(l) && !/^\s*\|[\s\-:|]+\|\s*$/.test(l);
-    let rowCount = Math.max(0, lines.filter(isRow).length - 1);
-    if (!lines.some(isRow)) {
+    const key = (before, after) => `${mdCell(before).replace(/\s+/g, ' ')}|${mdCell(after).replace(/\s+/g, ' ')}`;
+    const drop = new Set([...misprints.map(c => key(c.hunk.del, c.hunk.ins)), ...reopened.map(r => key(r.before, r.after))]);
+    const seen = new Set();
+    let lines = sec3 ? sec3.split('\n') : [];
+    let changed = false;
+    lines = lines.filter(l => {
+      if (!isRow(l)) return true;
+      const cells = l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      if (!(cells[5] || '').startsWith(REVIEWER_MISPRINT_NOTE)) return true;
+      const k = key(cells[2], cells[3]);
+      const keep = !drop.has(k) && !seen.has(k);
+      seen.add(k);
+      if (!keep) changed = true;
+      return keep;
+    });
+    if (!misprints.length && !changed) return sec3;
+    if (misprints.length && !lines.some(isRow)) {
       lines.push('| सङ्ख्या | स्थानम् | मूलपाठः | शोधितः पाठः | प्रकारः | विवरणम् |', '| :--- | :--- | :--- | :--- | :--- | :--- |');
     }
     misprints.forEach(c => {
-      rowCount += 1;
-      const note = 'संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer)' + (c.note ? `; ${c.note}` : '');
-      lines.push(`| ${toDevanagariDigits(rowCount)} | …${mdCell(c.before)}… | ${mdCell(c.hunk.del)} | ${mdCell(c.hunk.ins)} | ⚠️ मुद्रणदोषः | ${mdCell(note)} |`);
+      const note = REVIEWER_MISPRINT_NOTE + (c.note ? `; ${c.note}` : '');
+      lines.push(`| ० | …${mdCell(c.before)}… | ${mdCell(c.hunk.del)} | ${mdCell(c.hunk.ins)} | ⚠️ मुद्रणदोषः | ${mdCell(note)} |`);
     });
-    return lines.join('\n');
+    // Renumber the rows after the header
+    let n = -1;
+    return lines.map(l => {
+      if (!isRow(l)) return l;
+      n += 1;
+      return n ? l.replace(/^(\s*\|\s*)[^|]*?(\s*\|)/, `$1${toDevanagariDigits(n)}$2`) : l;
+    }).join('\n');
+  }
+
+  // Misprints from the saved log that are not live changes on the page: saved earlier, they keep
+  // the printed reading, so the diff no longer sees them. Reopened ones are left out.
+  function savedMisprints(item, pc) {
+    const same = (a, b) => sameText(a.before, b.before) && sameText(a.after, b.after);
+    return (item.saved_log || []).filter(e => e.category === 'misprint' &&
+      !(item.reopenedMisprints || []).some(r => same(r, e)) &&
+      !(pc && pc.sec1.changes.some(c => same({ before: c.hunk.del, after: c.hunk.ins }, e))));
   }
 
   function changeLogEntries(pc, item) {
@@ -2941,9 +3036,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }));
     // Misprints saved earlier keep the printed reading, so they no longer show up as changes:
     // carry their log entries forward from the saved log
-    (item.saved_log || []).filter(e => e.category === 'misprint' &&
-      !pc.sec1.changes.some(c => sameText(c.hunk.del, e.before) && sameText(c.hunk.ins, e.after)))
-      .forEach(e => {
+    savedMisprints(item, pc).forEach(e => {
         const m = (e.context || '').match(/^…(.*?) \[.*\] (.*?)…$/);
         entries.push({ section: 'sec1', category: 'misprint', before: e.before, after: e.after,
           context_before: m ? m[1] : '', context_after: m ? m[2] : '', source: e.source, note: e.note, pada: e.pada || '' });
@@ -2966,10 +3059,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const pc = pageChanges(item);
     const misprints = pc.sec1.changes.filter(c => c.category === 'misprint');
     let sec1 = item.sec1, sec3 = (item.sec3_md || '').trim();
-    if (misprints.length) {
-      sec1 = textKeepingPrinted(pc.sec1.ops, pc.sec1.hunkOf, new Set(misprints.map(c => c.hunkIndex)));
-      sec3 = appendApparatusRows(sec3, misprints);
-    }
+    if (misprints.length) sec1 = textKeepingPrinted(pc.sec1.ops, pc.sec1.hunkOf, new Set(misprints.map(c => c.hunkIndex)));
+    sec3 = updateApparatusRows(sec3, misprints, item.reopenedMisprints || []);
     const md = buildPageMarkdown({ ...item, sec1, sec3_md: sec3 });
     const log = changeLogEntries(pc, item);
     let content = log.length ? md + '\n' + logTableMarkdown(log) : md;
