@@ -37,14 +37,12 @@
 | ११ | गद्यभागः (पङ्क्तिः १८) | स्त्रीव्यतिकरनिमित्त एव | स्त्रीव्यतिकरनिमित्तः एव | ℹ️ व्याकरणम् / सन्धिः | 'स्त्रीव्यतिकरनिमित्तः + एव' इत्यत्र विसर्गलोपसन्धिः। |
 | १२ | गद्यभागः (पङ्क्तिः २०-२१) | मेऽन्यदा-पतितम् | मे + अन्यत् + आपतितम् | ℹ️ पृष्ठसन्धिः | पङ्क्त्यन्ते सवर्णदीर्घ-जश्त्वसन्धियुक्तपदविभागः। |
 | १३ | पृष्ठान्तः (पङ्क्तिः २१) | ईश्वरो हि पुरुषः | ईश्वरः हि पुरुषः | ℹ️ पृष्ठसन्धिः | वाक्यं अग्रिमपृष्ठे (पृष्ठे ०१७) 'परस्य सुखदुःखे...' इत्यादिना अनुवर्तते। |
-| १४ | …पटैः… | सम्यग्बध्वा | सम्यग्बद्ध्वा | ⚠️ मुद्रणदोषः | संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer); The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). Keep the printed form with a मुद्रणदोषः note, or correct it. |
-| १५ | …पटैः… | सम्यग्बध्वा | सम्यग्बद्ध्वा | ⚠️ मुद्रणदोषः | संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer); The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). Keep the printed form with a मुद्रणदोषः note, or correct it. |
-| १६ | …पटैः… | सम्यग्बध्वा | सम्यग्बद्ध्वा | ⚠️ मुद्रणदोषः | संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer); The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). Keep the printed form with a मुद्रणदोषः note, or correct it. |
+| १४ | …पटैः… | सम्यग्बध्वा | सम्यग्बद्ध्वा | ⚠️ मुद्रणदोषः | संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer); The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). |
 
 ## ४. संशोधनलेखः (Correction Log)
 
 | सङ्ख्या | विभागः | प्रकारः | पूर्वपाठः | संशोधितः पाठः | सन्दर्भः | स्रोतः | टिप्पणी | पदच्छेदः |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | १ | मूलपाठः | 🔍 OCR-दोषः | श्वश्वा | श्वश्र्वा | …तत्संगे [श्वश्वा → श्वश्र्वा] नियुक्ता… | AI-सूचना स्वीकृता (AI flag accepted) | मुद्रणे 'श्र्व' दृश्यते — the scan shows श्वश्र्वा (instrumental of श्वश्रू, 'by the mother-in-law'); the र is missing. Also, the source text has श्वश्व्रा, which is also a typo. | ✔ अद्यतितः |
-| २ | मूलपाठः | ⚠️ मुद्रणदोषः | सम्यग्बध्वा | सम्यग्बद्ध्वा | …पटैः [सम्यग्बध्वा → सम्यग्बद्ध्वा] स्वयमप्यन्धेव… | AI-सूचना स्वीकृता (AI flag accepted) | The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). Keep the printed form with a मुद्रणदोषः note, or correct it. | ✔ यथावत् |
+| २ | मूलपाठः | ⚠️ मुद्रणदोषः | सम्यग्बध्वा | सम्यग्बद्ध्वा | …पटैः [सम्यग्बध्वा → सम्यग्बद्ध्वा] स्वयमप्यन्धेव… | AI-सूचना स्वीकृता (AI flag accepted) | The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). | ✔ यथावत् |
 | ३ | पदच्छेदः | ✂️ पदच्छेददोषः | श्वश्वा | श्वश्र्वा | …-संगे [श्वश्वा → श्वश्र्वा] नि-… | AI-सूचना स्वीकृता (AI flag accepted) | Padaccheda repeats the same missing र: श्वश्र्वा. |  |
