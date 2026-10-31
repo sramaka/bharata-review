@@ -231,6 +231,45 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     --accent-green: #16a34a;
     --paper-bg: #faf6f0;
     --card-bg: #ffffff;
+    --editor-bg: #ffffff;
+    --editor-text: #0f172a;
+    --panel-bg: #ffffff;
+    --panel-text: #1e293b;
+    --panel-muted: #64748b;
+    --panel-heading: #7c2d12;
+    --panel-border: #cbd5e1;
+    --panel-input: #f8fafc;
+    --panel-hover: #f1f5f9;
+    --panel-current: #e0f2fe;
+  }
+  [data-theme="sepia"] {
+    --paper-bg: #efe4cc;
+    --card-bg: #faf3e3;
+    --editor-bg: #fdf8ec;
+    --editor-text: #2b2118;
+    --panel-bg: #faf3e3;
+    --panel-text: #3b2f22;
+    --panel-muted: #7c6a55;
+    --panel-heading: #7c2d12;
+    --panel-border: #dccdb0;
+    --panel-input: #fdf8ec;
+    --panel-hover: #f1e6cf;
+    --panel-current: #f3e1bd;
+  }
+  [data-theme="dark"] {
+    --paper-bg: #111827;
+    --card-bg: #1a2332;
+    --editor-bg: #0f1623;
+    --editor-text: #e5e7eb;
+    --panel-bg: #1a2332;
+    --panel-text: #e2e8f0;
+    --panel-muted: #94a3b8;
+    --panel-heading: #fbbf24;
+    --panel-border: #334155;
+    --panel-input: #0f1623;
+    --panel-hover: #243045;
+    --panel-current: #1e3a5f;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -364,43 +403,168 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     font-weight: 600;
   }
 
-  /* Settings (font, size, copy) popover */
-  .settings-wrap { position: relative; }
+  /* Settings drawer */
   .settings-btn { font-size: 17px; padding: 6px 10px; }
-  .settings-menu {
-    position: absolute;
+  .drawer-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.35); z-index: 90; }
+  .settings-drawer {
+    position: fixed;
+    top: 0;
     right: 0;
-    top: calc(100% + 6px);
-    z-index: 50;
-    width: 290px;
-    background: #ffffff;
-    color: #1e293b;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-    padding: 12px;
+    bottom: 0;
+    width: min(380px, 100vw);
+    z-index: 95;
+    background: var(--panel-bg);
+    color: var(--panel-text);
+    border-left: 1px solid var(--panel-border);
+    box-shadow: -12px 0 30px rgba(0, 0, 0, 0.3);
     display: flex;
     flex-direction: column;
-    gap: 8px;
   }
-  .menu-label {
-    font-size: 13px;
+  .drawer-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-header);
+    color: var(--accent-gold);
     font-weight: 600;
-    color: #475569;
+    font-size: 16px;
   }
-  .menu-row { display: flex; align-items: center; gap: 6px; }
-  .settings-menu select, .settings-menu button, .settings-menu input {
-    background: #f8fafc;
-    color: #1e293b;
-    border-color: #cbd5e1;
+  .drawer-close { background: transparent; border-color: #475569; color: #cbd5e1; }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 8px 16px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .set-group { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 14px 0; border-bottom: 1px solid var(--panel-border); }
+  .set-group h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--panel-heading); letter-spacing: 0.2px; }
+  .set-label { font-size: 13px; font-weight: 600; color: var(--panel-muted); margin-top: 4px; }
+  .set-hint { font-size: 12px; color: var(--panel-muted); line-height: 1.5; }
+  .set-row { display: flex; align-items: center; gap: 6px; }
+  .settings-drawer select, .settings-drawer button, .settings-drawer input[type="number"] {
+    background: var(--panel-input);
+    color: var(--panel-text);
+    border-color: var(--panel-border);
   }
-  .settings-menu button:hover:not(:disabled), .settings-menu select:hover {
-    background: #f1f5f9;
-    border-color: #94a3b8;
+  .settings-drawer button:hover:not(:disabled), .settings-drawer select:hover {
+    background: var(--panel-hover);
+    border-color: var(--panel-muted);
   }
-  .settings-menu select { width: 100%; }
-  .menu-sep { height: 1px; background: #e2e8f0; margin: 4px 0; }
+  .settings-drawer .drawer-close { background: transparent; color: #cbd5e1; border-color: #475569; }
+  .settings-drawer select { width: 100%; }
+  .seg { display: flex; flex-wrap: wrap; gap: 0; }
+  .seg button { flex: 1 1 auto; border-radius: 0; margin-left: -1px; font-size: 13px; padding: 6px 8px; }
+  .seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+  .seg button:last-child { border-radius: 0 6px 6px 0; }
+  .settings-drawer .seg button.active, .pp-filters button.active {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #ffffff;
+    position: relative;
+  }
+  .font-sample {
+    font-family: var(--font-family);
+    font-size: 22px;
+    line-height: 1.6;
+    padding: 8px 10px;
+    border: 1px dashed var(--panel-border);
+    border-radius: 6px;
+    background: var(--editor-bg);
+    color: var(--editor-text);
+  }
+  .set-check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.5; cursor: pointer; }
+  .set-check input { margin-top: 4px; }
   .menu-item { justify-content: flex-start; width: 100%; white-space: normal; text-align: left; }
+  .drawer-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 12px; }
+
+  /* Page panel: pages grouped by parva */
+  .page-picker { position: relative; }
+  .page-btn {
+    min-width: 200px;
+    max-width: 300px;
+    justify-content: space-between;
+    gap: 8px;
+    font-weight: 600;
+  }
+  .page-btn-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .page-btn .caret { font-size: 11px; opacity: 0.8; }
+  .page-btn .pb-flags { color: #fca5a5; margin-left: 4px; }
+  .page-panel {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 6px);
+    z-index: 60;
+    width: 420px;
+    max-width: calc(100vw - 24px);
+    max-height: min(72vh, 640px);
+    display: flex;
+    flex-direction: column;
+    background: var(--panel-bg);
+    color: var(--panel-text);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+    overflow: hidden;
+  }
+  .pp-top { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--panel-border); }
+  .pp-top input {
+    width: 100%;
+    padding: 7px 10px;
+    font: inherit;
+    font-size: 14px;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    background: var(--panel-input);
+    color: var(--panel-text);
+  }
+  .pp-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pp-filters button {
+    background: var(--panel-input);
+    color: var(--panel-text);
+    border-color: var(--panel-border);
+    font-size: 12.5px;
+    min-height: 28px;
+    padding: 2px 10px;
+    border-radius: 999px;
+  }
+  .pp-filters button:hover:not(:disabled):not(.active) { background: var(--panel-hover); }
+  .pp-tree { overflow-y: auto; padding: 4px 0; flex: 1; }
+  .pp-group-head, .pp-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    color: var(--panel-text);
+    border: none;
+    border-radius: 0;
+    text-align: left;
+    justify-content: flex-start;
+    min-height: 0;
+    font-weight: 400;
+  }
+  .pp-group-head { padding: 7px 12px; font-weight: 600; font-size: 14.5px; }
+  .pp-group-head:hover:not(:disabled), .pp-row:hover:not(:disabled) { background: var(--panel-hover); border: none; }
+  .pp-group-head:focus-visible, .pp-row:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+  .pp-group-head .pp-caret { width: 12px; font-size: 10px; color: var(--panel-muted); flex: none; }
+  .pp-group-head .pp-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pp-range { font-size: 12px; font-weight: 400; color: var(--panel-muted); }
+  .pp-progress { font-size: 12px; font-weight: 600; color: var(--panel-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .pp-progress.done { color: var(--accent-green); }
+  .pp-flags { font-size: 12px; font-weight: 700; color: #dc2626; white-space: nowrap; }
+  .pp-bar { height: 3px; margin: -2px 12px 4px 32px; background: var(--panel-border); border-radius: 2px; overflow: hidden; }
+  .pp-bar span { display: block; height: 100%; background: var(--accent-green); }
+  .pp-group.empty .pp-group-head { color: var(--panel-muted); font-weight: 400; cursor: default; }
+  .pp-group.empty .pp-group-head:hover { background: transparent; }
+  .pp-row { padding: 5px 12px 5px 34px; font-size: 14px; }
+  .pp-row .pp-status { width: 14px; flex: none; text-align: center; }
+  .pp-row .pp-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pp-row .pp-pdf { font-size: 12px; color: var(--panel-muted); font-variant-numeric: tabular-nums; }
+  .pp-row.saved .pp-status { color: var(--accent-green); }
+  .pp-row.edited .pp-status { color: var(--accent-amber); }
+  .pp-row.unreviewed .pp-status { color: var(--panel-muted); }
+  .pp-row.current { background: var(--panel-current); box-shadow: inset 3px 0 0 var(--accent-blue); font-weight: 600; }
+  .pp-empty { padding: 16px; color: var(--panel-muted); font-size: 14px; text-align: center; }
+  .pp-foot { padding: 7px 12px; font-size: 12.5px; color: var(--panel-muted); border-top: 1px solid var(--panel-border); }
+
+  /* Review highlights can be switched off in the settings */
+  .hide-highlights mark.flag { background: transparent !important; text-decoration: none !important; }
 
   .save-btn {
     background: var(--accent-green);
@@ -625,6 +789,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     flex-wrap: wrap;
     gap: 8px;
   }
+  .card-header.hdr-flags { color: #991b1b; border-color: #fecaca; }
+  .card-header.hdr-sec2 { color: #1e3a8a; border-color: #bfdbfe; }
+  .card-header.hdr-sec3 { color: #334155; border-color: #cbd5e1; }
+  .light-btn.danger-btn { color: #b91c1c; border-color: #fecaca; }
   .card-header-right {
     display: flex;
     align-items: center;
@@ -643,8 +811,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     resize: vertical;
     overflow-y: hidden;
     white-space: pre-wrap;
-    background: #ffffff;
-    color: #0f172a;
+    background: var(--editor-bg);
+    color: var(--editor-text);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .sanskrit-editor:focus {
@@ -656,7 +824,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .sanskrit-editor { overflow-wrap: break-word; }
 
   /* Review flags: highlights drawn on a layer behind the transparent textarea */
-  .editor-wrap { position: relative; background: #ffffff; border-radius: 8px; }
+  .editor-wrap { position: relative; background: var(--editor-bg); border-radius: 8px; }
   .editor-wrap > textarea.sanskrit-editor { position: relative; z-index: 1; background: transparent; }
   .flag-backdrop {
     position: absolute;
@@ -1104,6 +1272,74 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .review-where, .review-note { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 0.8em; color: #57534e; }
 
   /* Toast Notification */
+  /* ---- Sepia theme: warmer paper for the light surfaces ---- */
+  [data-theme="sepia"] .page-utility-bar,
+  [data-theme="sepia"] .change-item, [data-theme="sepia"] .change-text,
+  [data-theme="sepia"] .proof-full, [data-theme="sepia"] .mark-dialog { background: var(--card-bg); }
+  [data-theme="sepia"] .card-container { border-color: #e2d3b5; }
+  [data-theme="sepia"] .light-btn { background: #fdf8ec; border-color: #dccdb0; color: #3b2f22; }
+  [data-theme="sepia"] .light-btn:hover:not(:disabled) { background: #f1e6cf; }
+  [data-theme="sepia"] .scholarly-table th { background: #f1e6cf; color: #3b2f22; }
+  [data-theme="sepia"] .scholarly-table tr:nth-child(even) { background: #f7eedb; }
+  [data-theme="sepia"] .scholarly-table th, [data-theme="sepia"] .scholarly-table td { border-color: #dccdb0; }
+
+  /* ---- Dark theme ---- */
+  [data-theme="dark"] body { color: #e2e8f0; }
+  [data-theme="dark"] .text-pane { color: #e2e8f0; }
+  [data-theme="dark"] .page-utility-bar { background: #1a2332; border-color: #334155; border-left-color: #d97706; }
+  [data-theme="dark"] .page-utility-title { color: #fbbf24; }
+  [data-theme="dark"] .page-pdf-num, [data-theme="dark"] .flag-where, [data-theme="dark"] .change-hint,
+  [data-theme="dark"] .change-text .ctx, [data-theme="dark"] .flag-legend, [data-theme="dark"] .empty-note { color: #94a3b8; }
+  [data-theme="dark"] .status-chip.unreviewed { color: #cbd5e1; background: #1e293b; border-color: #475569; }
+  [data-theme="dark"] .status-chip.edited { color: #fcd34d; background: #3b2a0a; border-color: #92400e; }
+  [data-theme="dark"] .status-chip.saved { color: #86efac; background: #0d2e1b; border-color: #166534; }
+  [data-theme="dark"] .card-container { border-color: #334155; box-shadow: none; }
+  [data-theme="dark"] .card-header { color: #fdba74; border-color: #7c2d12; }
+  [data-theme="dark"] .card-header.hdr-flags { color: #fca5a5; border-color: #7f1d1d; }
+  [data-theme="dark"] .card-header.hdr-sec2 { color: #93c5fd; border-color: #1e3a8a; }
+  [data-theme="dark"] .card-header.hdr-sec3 { color: #cbd5e1; border-color: #475569; }
+  [data-theme="dark"] .sanskrit-editor { border-color: #334155; }
+  [data-theme="dark"] .light-btn { background: #243045; color: #e2e8f0; border-color: #3b4a63; }
+  [data-theme="dark"] .light-btn:hover:not(:disabled) { background: #2d3b55; color: #ffffff; border-color: #64748b; }
+  [data-theme="dark"] .light-btn.danger-btn { color: #fca5a5; border-color: #7f1d1d; }
+  [data-theme="dark"] .flag-item { border-color: #334155; }
+  [data-theme="dark"] .flag-item.is-mark { background: #0f2a2a; border-color: #115e59; }
+  [data-theme="dark"] .flag-note { color: #cbd5e1; }
+  [data-theme="dark"] .flag-match { color: #fca5a5; }
+  [data-theme="dark"] .flag-suggest, [data-theme="dark"] .flag-done, [data-theme="dark"] .pada-status.ok { color: #86efac; }
+  [data-theme="dark"] .pada-status.stale { color: #fdba74; }
+  [data-theme="dark"] .mark-dialog { background: #1a2332; color: #e2e8f0; border-color: #115e59; }
+  [data-theme="dark"] .mark-dialog-title { color: #5eead4; }
+  [data-theme="dark"] .mark-dialog-word { color: #f1f5f9; }
+  [data-theme="dark"] .mark-dialog input[type="text"] { background: #0f1623; color: #e2e8f0; border-color: #334155; }
+  [data-theme="dark"] mark.flag-ocr { background: rgba(239, 68, 68, 0.28); }
+  [data-theme="dark"] mark.flag-print { background: rgba(245, 158, 11, 0.3); }
+  [data-theme="dark"] mark.flag-mine { background: rgba(20, 184, 166, 0.28); }
+  [data-theme="dark"] mark.flag-askai { background: rgba(129, 140, 248, 0.3); }
+  [data-theme="dark"] mark.flag-pada { background: rgba(168, 85, 247, 0.28); }
+  [data-theme="dark"] mark.flag-stale { background: rgba(249, 115, 22, 0.26); }
+  [data-theme="dark"] mark.flag-verify { background: rgba(59, 130, 246, 0.28); }
+  [data-theme="dark"] .proof-panel { background: #221a0b; border-color: #78350f; border-top-color: #d97706; }
+  [data-theme="dark"] .proof-head, [data-theme="dark"] .change-sec, [data-theme="dark"] .proof-full-label { color: #fcd34d; }
+  [data-theme="dark"] .change-item { background: #1a2332; border-color: #78350f; }
+  [data-theme="dark"] .change-text { background: #1a2332; color: #e2e8f0; }
+  [data-theme="dark"] .change-text:hover:not(:disabled) { background: #2a2410; }
+  [data-theme="dark"] .change-meta select, [data-theme="dark"] .change-meta input { background: #0f1623; color: #e2e8f0; border-color: #334155; }
+  [data-theme="dark"] .proof-full { background: #0f1623; color: #e2e8f0; border-color: #78350f; }
+  [data-theme="dark"] .proof-panel ins { background: #713f12; color: #fde68a; }
+  [data-theme="dark"] .proof-panel del { background: #7f1d1d; color: #fecaca; }
+  [data-theme="dark"] .scholarly-table th { background: #243045; color: #e2e8f0; }
+  [data-theme="dark"] .scholarly-table tr:nth-child(even) { background: #172030; }
+  [data-theme="dark"] .scholarly-table tr:hover { background: #243045; }
+  [data-theme="dark"] .scholarly-table th, [data-theme="dark"] .scholarly-table td { border-color: #334155; }
+  [data-theme="dark"] .apparatus-badge { background: #243045; border-color: #3b4a63; }
+  [data-theme="dark"] .modal-toolbar { background: #1a2332; border-color: #334155; }
+  [data-theme="dark"] .modal-options { color: #cbd5e1; }
+  [data-theme="dark"] .btn-export-light { background: #243045; color: #e2e8f0; border-color: #3b4a63; }
+  [data-theme="dark"] .btn-export-light:hover:not(:disabled) { background: #2d3b55; }
+  [data-theme="dark"] .modal-card { background: #1a2332; border-color: #334155; }
+  [data-theme="dark"] .modal-body { background: #111827; }
+
   .toast {
     position: fixed;
     bottom: 22px;
@@ -1153,7 +1389,24 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <!-- Navigation Group -->
     <div class="toolbar-group" title="पृष्ठ-सञ्चालनम् (Page Navigation — Alt + Left/Right)">
       <button id="prevBtn" class="nav-btn" onclick="prevPage()">‹ पूर्वम्</button>
-      <select id="pageSelect" onchange="switchPage(this.value)"></select>
+      <div class="page-picker" id="pagePicker">
+        <button id="pageBtn" class="page-btn" onclick="togglePagePanel()" aria-haspopup="dialog" aria-expanded="false" title="पृष्ठसूची (All pages — Alt + G)">
+          <span id="pageBtnLabel" class="page-btn-label"></span><span class="caret">▾</span>
+        </button>
+        <div id="pagePanel" class="page-panel" role="dialog" aria-label="Pages" hidden>
+          <div class="pp-top">
+            <input id="pageSearch" type="search" autocomplete="off" oninput="renderPagePanel()"
+                   placeholder="अन्विष्यतु (Find a page, PDF number or parva)">
+            <div class="pp-filters">
+              <button data-filter="all" onclick="setPageFilter('all')">सर्वाणि (All)</button>
+              <button data-filter="review" onclick="setPageFilter('review')">⚑ समीक्ष्याणि (To review)</button>
+              <button data-filter="unsaved" onclick="setPageFilter('unsaved')">अरक्षितानि (Unsaved)</button>
+            </div>
+          </div>
+          <div id="pageTree" class="pp-tree" role="tree"></div>
+          <div id="pageSummary" class="pp-foot"></div>
+        </div>
+      </div>
       <button id="nextBtn" class="nav-btn" onclick="nextPage()">परम् ›</button>
     </div>
 
@@ -1166,8 +1419,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     <!-- Section Visibility Group -->
     <div class="toolbar-group" title="विभाग-दर्शनम् (Toggle Sections)">
-      <button id="toggleSec2" class="section-toggle" onclick="toggleSection('sec2Box', 'toggleSec2')">+ पदच्छेदः</button>
-      <button id="toggleSec3" class="section-toggle" onclick="toggleSection('sec3Box', 'toggleSec3')">+ टिप्पणी</button>
+      <button id="toggleSec2" class="section-toggle" onclick="toggleSection('sec2Box', 'toggleSec2')"><span class="sign">+</span> पदच्छेदः</button>
+      <button id="toggleSec3" class="section-toggle" onclick="toggleSection('sec3Box', 'toggleSec3')"><span class="sign">+</span> टिप्पणी</button>
     </div>
 
     <div class="toolbar-spacer"></div>
@@ -1176,29 +1429,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       📖 <span class="btn-label">सम्पूर्णः ग्रन्थः</span>
     </button>
 
-    <!-- Display settings & copy actions -->
-    <div class="settings-wrap" id="settingsWrap">
-      <button id="settingsBtn" class="settings-btn" onclick="toggleSettings()" title="विन्यासाः (Font, size and copy options)" aria-haspopup="true" aria-expanded="false">⚙</button>
-      <div id="settingsMenu" class="settings-menu" hidden>
-        <div class="menu-label">लिपिः (Font)</div>
-        <select id="fontSelect" onchange="changeFont(this.value)">
-          <option value="'Tiro Devanagari Sanskrit', serif">Tiro Devanagari Sanskrit</option>
-          <option value="Martel, serif">Martel</option>
-          <option value="Sahitya, serif">Sahitya</option>
-          <option value="'Noto Serif Devanagari', serif">Noto Serif</option>
-          <option value="Siddhanta, serif">Siddhanta</option>
-        </select>
-        <div class="menu-label">अक्षराकारः (Text size)</div>
-        <div class="menu-row">
-          <button onclick="stepFontSize(-2)" title="अक्षराकारं न्यूनीकरोतु (Decrease Font Size)">A−</button>
-          <input type="number" id="fontSizeInput" class="num-input" value="22" min="14" max="48" onchange="setFontSizeNumber(this.value)">
-          <button onclick="stepFontSize(2)" title="अक्षराकारं वर्धयतु (Increase Font Size)">A+</button>
-        </div>
-        <div class="menu-sep"></div>
-        <button class="menu-item" onclick="copySectionText('sec1')">📋 मूलपाठं प्रतिकुरुत (Copy page text)</button>
-        <button class="menu-item" onclick="copyCurrentPageFormatted()">📑 सम्पूर्णं पृष्ठं प्रतिकुरुत (Copy page with notes)</button>
-      </div>
-    </div>
+    <!-- Settings drawer -->
+    <button id="settingsBtn" class="settings-btn" onclick="toggleSettings()" title="विन्यासाः (Settings)" aria-haspopup="dialog" aria-expanded="false">⚙</button>
 
     <!-- Save to Cloud / Server -->
     <button id="saveBtn" class="save-btn" onclick="saveVerifiedDirect()" title="संशोधितं पृष्ठं रक्षतु (Save verified page)">
@@ -1206,6 +1438,77 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     </button>
   </div>
 </header>
+
+<div id="settingsOverlay" class="drawer-overlay" hidden onclick="toggleSettings(false)"></div>
+<aside id="settingsMenu" class="settings-drawer" role="dialog" aria-labelledby="settingsTitle" hidden>
+  <div class="drawer-head">
+    <span id="settingsTitle">⚙ विन्यासाः (Settings)</span>
+    <button class="drawer-close" onclick="toggleSettings(false)" title="पिदधातु (Close — Esc)">✕</button>
+  </div>
+  <div class="drawer-body">
+    <section class="set-group">
+      <h3>रूपम् (Appearance)</h3>
+      <div class="set-label">वर्णयोजना (Theme)</div>
+      <div class="seg" data-setting="theme">
+        <button data-value="light">☀ प्रकाशः (Light)</button>
+        <button data-value="sepia">📜 पत्रवर्णः (Sepia)</button>
+        <button data-value="dark">🌙 अन्धकारः (Dark)</button>
+        <button data-value="system">💻 यन्त्रानुसारम् (Device)</button>
+      </div>
+      <div class="set-label">अन्तरापृष्ठभाषा (Interface language)</div>
+      <div class="seg" data-setting="uiLang">
+        <button data-value="both" class="no-i18n">संस्कृतम् + English</button>
+        <button data-value="sa" class="no-i18n">संस्कृतम्</button>
+        <button data-value="en" class="no-i18n">English</button>
+      </div>
+      <div class="set-hint">मेनू-बटन-सूचनानां भाषा, ग्रन्थपाठस्य न (For menus, buttons and messages, not the book text)</div>
+    </section>
+
+    <section class="set-group">
+      <h3>पाठः (Text)</h3>
+      <div class="set-label">लिपिः (Devanagari font)</div>
+      <select id="fontSelect" onchange="changeFont(this.value)">
+        <option value="'Tiro Devanagari Sanskrit', serif">Tiro Devanagari Sanskrit</option>
+        <option value="Martel, serif">Martel</option>
+        <option value="Sahitya, serif">Sahitya</option>
+        <option value="'Noto Serif Devanagari', serif">Noto Serif Devanagari</option>
+        <option value="Siddhanta, serif">Siddhanta</option>
+      </select>
+      <div id="fontSample" class="font-sample no-i18n">धृतराष्ट्रः पाण्डुश्च विदुरश्चेति त्रयः पुत्राः ॥</div>
+      <div class="set-label">अक्षराकारः (Text size)</div>
+      <div class="set-row">
+        <button onclick="stepFontSize(-2)" title="अक्षराकारं न्यूनीकरोतु (Smaller text)">A−</button>
+        <input type="number" id="fontSizeInput" class="num-input" value="22" min="14" max="48" onchange="setFontSizeNumber(this.value)">
+        <button onclick="stepFontSize(2)" title="अक्षराकारं वर्धयतु (Larger text)">A+</button>
+      </div>
+      <div class="set-label">पङ्क्त्यन्तरम् (Line spacing)</div>
+      <div class="seg" data-setting="lineHeight">
+        <button data-value="1.55">सङ्क्षिप्तम् (Compact)</button>
+        <button data-value="1.75">सामान्यम् (Normal)</button>
+        <button data-value="2">विस्तृतम् (Relaxed)</button>
+      </div>
+    </section>
+
+    <section class="set-group">
+      <h3>समीक्षा (Review)</h3>
+      <label class="set-check"><input type="checkbox" id="optHighlights" onchange="setSetting('highlights', this.checked)">
+        समीक्षणीयपदानि पाठे वर्णैः दर्शयतु (Highlight words to review in the text)</label>
+      <label class="set-check"><input type="checkbox" id="optRememberPage" onchange="setSetting('rememberPage', this.checked)">
+        अन्तिमं दृष्टं पृष्ठं पुनः उद्घाटयतु (Reopen the page I was last on)</label>
+    </section>
+
+    <section class="set-group">
+      <h3>अस्य पृष्ठस्य प्रतिकृतिः (Copy this page)</h3>
+      <button class="menu-item" onclick="copySectionText('sec1')">📋 मूलपाठं प्रतिकुरुत (Copy page text)</button>
+      <button class="menu-item" onclick="copyCurrentPageFormatted()">📑 सम्पूर्णं पृष्ठं प्रतिकुरुत (Copy page with notes)</button>
+    </section>
+
+    <div class="drawer-foot">
+      <button class="light-btn" onclick="resetSettings()">↺ मूलविन्यासाः (Reset to defaults)</button>
+      <span class="set-hint">अस्मिन् ब्राउज़रे रक्ष्यन्ते (Remembered in this browser)</span>
+    </div>
+  </div>
+</aside>
 
 <div class="main-container">
   <!-- Left Scan Image Pane -->
@@ -1237,7 +1540,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     <!-- Words flagged for review on this page -->
     <div id="flagPanel" class="card-container flag-panel" hidden>
-      <div class="card-header" style="color: #991b1b; border-color: #fecaca;">
+      <div class="card-header hdr-flags">
         <span id="flagTitle">⚑ समीक्षणीयानि पदानि (Words to review)</span>
         <span class="flag-legend">
           <span class="legend-ocr">पाठभेदः (differs from scan)</span>
@@ -1258,7 +1561,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="card-header-right">
           <button class="light-btn" onclick="openMarkDialog('sec1')" title="चितं पदं समीक्षार्थं चिह्नयतु (Mark the selected word for review — Alt + M)">⚑ चिह्नयतु (Mark)</button>
           <button class="light-btn" onclick="copySectionText('sec1')" title="Copy Mūlapāṭha text">📋 प्रतिकुरुत (Copy)</button>
-          <button id="revertBtn" class="light-btn" style="display: none; color: #b91c1c; border-color: #fecaca;" onclick="revertCurrentPage()" title="मूलपाठं प्रत्यानयतु (Revert edits to original OCR)">↺ पूर्ववत् (Revert)</button>
+          <button id="revertBtn" class="light-btn danger-btn" style="display: none;" onclick="revertCurrentPage()" title="मूलपाठं प्रत्यानयतु (Revert edits to original OCR)">↺ पूर्ववत् (Revert)</button>
         </div>
       </div>
       <div class="editor-wrap">
@@ -1269,7 +1572,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     <!-- Section 2: Padaccheda -->
     <div id="sec2Box" class="card-container collapsible-section">
-      <div class="card-header" style="color: #1e3a8a; border-color: #bfdbfe;">
+      <div class="card-header hdr-sec2">
         <span>२. पदच्छेदसहितः पाठः (Sandhi-split Padaccheda)</span>
         <div class="card-header-right">
           <button class="light-btn" onclick="openMarkDialog('sec2')" title="चितं पदं समीक्षार्थं चिह्नयतु (Mark the selected word for review — Alt + M)">⚑ चिह्नयतु (Mark)</button>
@@ -1284,7 +1587,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     <!-- Section 3: Apparatus -->
     <div id="sec3Box" class="card-container collapsible-section">
-      <div class="card-header" style="color: #334155; border-color: #cbd5e1;">
+      <div class="card-header hdr-sec3">
         <span>३. सम्पादनटिप्पण्यः (Apparatus & Editorial Notes)</span>
         <div class="card-header-right">
           <button class="light-btn" onclick="copySectionText('sec3')" title="Copy Apparatus Markdown Table">📋 प्रतिकुरुत (Copy)</button>
@@ -1359,7 +1662,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <button class="btn-export-light" onclick="printOrSavePdf()" title="PDF रूपेण रक्षतु अथवा मुद्रयतु (Save as PDF or Print)">
           🖨️ PDF / मुद्रणम्
         </button>
-        <button class="btn-export-light" onclick="downloadCompiledMarkdown()" title="Markdown (.md) सञ्चिकां अवतारयतु">
+        <button class="btn-export-light" onclick="downloadCompiledMarkdown()" title="Markdown सञ्चिकां अवतारयतु (Download as a Markdown .md file)">
           ⬇ .md
         </button>
       </div>
@@ -1392,7 +1695,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   let currentIndex = 0;
   let currentZoom = 100;
 
-  const select = document.getElementById('pageSelect');
+  const PARVA_LIST = <!-- PARVAS_PLACEHOLDER -->;
+  const pagePicker = document.getElementById('pagePicker');
+  const pageBtn = document.getElementById('pageBtn');
+  const pageBtnLabel = document.getElementById('pageBtnLabel');
+  const pagePanel = document.getElementById('pagePanel');
+  const pageSearch = document.getElementById('pageSearch');
+  const pageTree = document.getElementById('pageTree');
+  const pageSummary = document.getElementById('pageSummary');
   const prevBtn = document.getElementById('prevBtn');
   const nextBtn = document.getElementById('nextBtn');
   const currentPageHeading = document.getElementById('currentPageHeading');
@@ -1410,7 +1720,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   const textPane = document.getElementById('textPane');
   const sec1Label = document.getElementById('sec1Label');
   const toggleSec2Btn = document.getElementById('toggleSec2');
-  const settingsWrap = document.getElementById('settingsWrap');
+  const settingsOverlay = document.getElementById('settingsOverlay');
+  const fontSelect = document.getElementById('fontSelect');
   const settingsBtn = document.getElementById('settingsBtn');
   const settingsMenu = document.getElementById('settingsMenu');
   const proofPanel = document.getElementById('proofPanel');
@@ -1477,10 +1788,181 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   function refreshPageOption(idx) {
-    const item = data[idx];
-    const open = openFlagCount(item);
-    select.options[idx].text = `${STATUS_MARK[pageStatus(item)]}${open ? `⚑${toDevanagariDigits(open)} ` : ''}${pageLabel(item)}  (PDF ${item.page})`;
+    if (idx === currentIndex) updatePageButton();
+    if (!pagePanel.hidden) renderPagePanel();
   }
+
+  function updatePageButton() {
+    const item = data[currentIndex];
+    const open = reviewTargets(currentIndex).length;
+    pageBtnLabel.innerHTML = `${STATUS_MARK[pageStatus(item)]}${escapeHtml(pageLabel(item))}` +
+      (open ? `<span class="pb-flags">⚑${toDevanagariDigits(open)}</span>` : '');
+  }
+
+  /* ---------- Page panel: the book's pages grouped by parva ----------
+     Front matter first, then every parva from the Contents. Parvas with no transcribed pages
+     yet are shown greyed out, so the panel doubles as a map of the whole book. */
+  let pageFilter = 'all';
+  let openGroups = null;     // keys of expanded groups; null until the panel is first opened
+
+  function pageGroups() {
+    const idxs = data.map((_, i) => i);
+    const groups = [];
+    const front = idxs.filter(i => data[i].front);
+    if (front.length) groups.push({ key: 'front', name: 'आमुखभागः (Front matter)', pages: front });
+    const parvaNames = new Set(PARVA_LIST.map(p => p.name));
+    PARVA_LIST.forEach(p => groups.push({
+      key: p.name,
+      name: p.name,
+      range: `पृ. ${toDevanagariDigits(p.from)}–${toDevanagariDigits(p.to)}`,
+      total: p.to - p.from + 1,
+      pages: idxs.filter(i => !data[i].front && data[i].section === p.name)
+    }));
+    const rest = idxs.filter(i => !data[i].front && !parvaNames.has(data[i].section));
+    if (rest.length) groups.push({ key: 'other', name: 'अन्यानि पृष्ठानि (Other pages)', pages: rest });
+    return groups;
+  }
+
+  function groupKeyOf(idx) {
+    const item = data[idx];
+    if (item.front) return 'front';
+    return PARVA_LIST.some(p => p.name === item.section) ? item.section : 'other';
+  }
+
+  function pageMatches(idx, q) {
+    if (!q) return true;
+    const item = data[idx];
+    const hay = [pageLabel(item), item.section || '', `PDF ${item.page}`, item.page, String(parseInt(item.page, 10)),
+                 item.book_page || ''].join(' ').toLowerCase();
+    return hay.includes(q) || hay.includes(toDevanagariDigits(q));
+  }
+
+  function pagePassesFilter(idx) {
+    if (pageFilter === 'review') return reviewTargets(idx).length > 0;
+    if (pageFilter === 'unsaved') return pageStatus(data[idx]) !== 'saved';
+    return true;
+  }
+
+  function setPageFilter(filter) {
+    pageFilter = filter;
+    renderPagePanel();
+  }
+
+  function renderPagePanel() {
+    const q = pageSearch.value.trim().toLowerCase();
+    const narrowed = Boolean(q) || pageFilter !== 'all';
+    pagePanel.querySelectorAll('.pp-filters button').forEach(b => b.classList.toggle('active', b.dataset.filter === pageFilter));
+
+    const html = [];
+    let savedAll = 0, reviewAll = 0;
+    pageGroups().forEach(g => {
+      const counts = g.pages.map(i => ({ i, status: pageStatus(data[i]), review: reviewTargets(i).length }));
+      const saved = counts.filter(c => c.status === 'saved').length;
+      const review = counts.reduce((n, c) => n + c.review, 0);
+      savedAll += saved;
+      reviewAll += review;
+      const shown = counts.filter(c => pageMatches(c.i, q) && pagePassesFilter(c.i));
+      const nameHit = q && g.name.toLowerCase().includes(q);
+
+      if (!g.pages.length) {
+        // A parva not transcribed yet: listed for orientation only
+        if (narrowed && !nameHit) return;
+        html.push(`<div class="pp-group empty"><button class="pp-group-head" disabled>` +
+          `<span class="pp-caret"></span><span class="pp-name">${escapeHtml(g.name)} <span class="pp-range">${g.range}</span></span>` +
+          `<span class="pp-progress">अलिखितम् (not transcribed yet)</span></button></div>`);
+        return;
+      }
+      const rows = nameHit ? counts : shown;
+      if (narrowed && !rows.length) return;
+      const open = narrowed || openGroups.has(g.key);
+      const total = g.total || g.pages.length;
+      html.push(`<div class="pp-group" role="group">` +
+        `<button class="pp-group-head" data-group="${escapeHtml(g.key)}" aria-expanded="${open}" onclick="togglePageGroup(this.dataset.group)">` +
+        `<span class="pp-caret">${open ? '▾' : '▸'}</span>` +
+        `<span class="pp-name">${escapeHtml(g.name)}${g.range ? ` <span class="pp-range">${g.range}</span>` : ''}</span>` +
+        (review ? `<span class="pp-flags">⚑${toDevanagariDigits(review)}</span>` : '') +
+        `<span class="pp-progress${saved === g.pages.length ? ' done' : ''}" title="रक्षितानि / लिखितानि${g.total ? ' / सर्वाणि' : ''} (Saved / transcribed${g.total ? ' / pages in the parva' : ''})">` +
+        `✔ ${toDevanagariDigits(saved)}/${toDevanagariDigits(g.pages.length)}${g.total && g.total !== g.pages.length ? ` · ${toDevanagariDigits(total)}` : ''}</span>` +
+        `</button>` +
+        `<div class="pp-bar"><span style="width: ${(100 * saved / total).toFixed(1)}%"></span></div>`);
+      if (open) {
+        rows.forEach(c => {
+          const item = data[c.i];
+          const label = item.front ? pageLabel(item) : (item.book_page ? `पृ. ${item.book_page}` : pageLabel(item));
+          html.push(`<button class="pp-row ${c.status}${c.i === currentIndex ? ' current' : ''}" role="treeitem" data-idx="${c.i}" onclick="pickPage(${c.i})">` +
+            `<span class="pp-status">${STATUS_MARK[c.status].trim() || '○'}</span>` +
+            `<span class="pp-label">${escapeHtml(label)}</span>` +
+            (c.review ? `<span class="pp-flags">⚑${toDevanagariDigits(c.review)}</span>` : '') +
+            `<span class="pp-pdf">PDF ${item.page}</span></button>`);
+        });
+      }
+      html.push(`</div>`);
+    });
+    pageTree.innerHTML = html.join('') ||
+      `<div class="pp-empty">न किमपि लब्धम् (No pages match)</div>`;
+    pageSummary.innerText = `रक्षितानि (Saved): ${toDevanagariDigits(savedAll)} / ${toDevanagariDigits(data.length)}` +
+      ` · ⚑ ${toDevanagariDigits(reviewAll)}`;
+  }
+
+  function togglePageGroup(key) {
+    if (openGroups.has(key)) openGroups.delete(key); else openGroups.add(key);
+    renderPagePanel();
+    const head = pageTree.querySelector(`.pp-group-head[data-group="${CSS.escape(key)}"]`);
+    if (head) head.focus();
+  }
+
+  function togglePagePanel(forceOpen) {
+    const open = forceOpen !== undefined ? forceOpen : pagePanel.hidden;
+    pagePanel.hidden = !open;
+    pageBtn.setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    if (!openGroups) openGroups = new Set();
+    openGroups.add(groupKeyOf(currentIndex));
+    pageSearch.value = '';
+    renderPagePanel();
+    const cur = pageTree.querySelector('.pp-row.current');
+    if (cur) cur.scrollIntoView({ block: 'center' });
+    pageSearch.focus();
+  }
+
+  function pickPage(idx) {
+    togglePagePanel(false);
+    if (idx !== currentIndex) switchPage(idx);
+    pageBtn.focus();
+  }
+
+  // Arrow keys move through the visible groups and pages; Left / Right fold a parva
+  pagePanel.addEventListener('keydown', (e) => {
+    const items = [...pageTree.querySelectorAll('.pp-group-head:not(:disabled), .pp-row')];
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      togglePagePanel(false);
+      pageBtn.focus();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!items.length) return;
+      const next = e.key === 'ArrowDown' ? (at === -1 ? 0 : Math.min(at + 1, items.length - 1)) : at - 1;
+      if (next < 0) pageSearch.focus(); else items[next].focus();
+    } else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && at !== -1) {
+      const el = items[at];
+      const head = el.classList.contains('pp-group-head') ? el : el.closest('.pp-group').querySelector('.pp-group-head');
+      const isOpen = head.getAttribute('aria-expanded') === 'true';
+      e.preventDefault();
+      if (e.key === 'ArrowRight' && !isOpen) togglePageGroup(head.dataset.group);
+      else if (e.key === 'ArrowLeft' && el !== head) head.focus();
+      else if (e.key === 'ArrowLeft' && isOpen) togglePageGroup(head.dataset.group);
+    } else if (e.key === 'Enter' && document.activeElement === pageSearch) {
+      // Enter in the search box opens the first matching page
+      const first = pageTree.querySelector('.pp-row');
+      if (first) pickPage(parseInt(first.dataset.idx, 10));
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    // composedPath, because re-rendering the tree may already have detached the clicked button
+    if (!pagePanel.hidden && !e.composedPath().includes(pagePicker)) togglePagePanel(false);
+  });
 
   /* ---------- Review flags ---------- */
   const FLAG_KIND_LABEL = {
@@ -1689,21 +2171,164 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     refreshPageOption(currentIndex);
   }
 
-  data.forEach((d, idx) => {
-    let opt = document.createElement('option');
-    opt.value = idx;
-    select.appendChild(opt);
-    refreshPageOption(idx);
-  });
-
   function toggleSettings(forceOpen) {
     const open = forceOpen !== undefined ? forceOpen : settingsMenu.hidden;
     settingsMenu.hidden = !open;
+    settingsOverlay.hidden = !open;
     settingsBtn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      const first = settingsMenu.querySelector('.seg button.active') || settingsMenu.querySelector('button');
+      if (first) first.focus();
+    }
   }
-  document.addEventListener('click', (e) => {
-    if (!settingsMenu.hidden && !settingsWrap.contains(e.target)) toggleSettings(false);
+
+  /* ---------- Settings, remembered in this browser ---------- */
+  const SETTINGS_KEY = 'bharata-review-settings';
+  const DEFAULT_SETTINGS = {
+    theme: 'light',
+    uiLang: 'both',
+    font: "'Tiro Devanagari Sanskrit', serif",
+    fontSize: 22,
+    lineHeight: '1.75',
+    highlights: true,
+    rememberPage: true,
+    lastPage: null
+  };
+  let settings = loadSettings();
+  const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function loadSettings() {
+    try {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
+    } catch (e) {
+      return { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  function storeSettings() {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* storage blocked: settings last this visit */ }
+  }
+
+  function setSetting(key, value) {
+    settings[key] = value;
+    storeSettings();
+    applySettings();
+  }
+
+  function resetSettings() {
+    settings = { ...DEFAULT_SETTINGS, lastPage: settings.lastPage };
+    storeSettings();
+    applySettings();
+    showToast('↺ मूलविन्यासाः पुनः स्थापिताः (Settings reset to defaults)');
+  }
+
+  function applySettings() {
+    const root = document.documentElement;
+    const theme = settings.theme === 'system' ? (darkQuery && darkQuery.matches ? 'dark' : 'light') : settings.theme;
+    root.dataset.theme = theme;
+    root.style.setProperty('--font-family', settings.font);
+    root.style.setProperty('--font-size', settings.fontSize + 'px');
+    root.style.setProperty('--line-height', settings.lineHeight);
+    document.body.classList.toggle('hide-highlights', !settings.highlights);
+    fontSelect.value = settings.font;
+    fontSizeInput.value = settings.fontSize;
+    document.getElementById('optHighlights').checked = settings.highlights;
+    document.getElementById('optRememberPage').checked = settings.rememberPage;
+    settingsMenu.querySelectorAll('.seg').forEach(seg => {
+      seg.querySelectorAll('button').forEach(b => {
+        const on = String(settings[seg.dataset.setting]) === b.dataset.value;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+    });
+    if (uiLang !== settings.uiLang) {
+      uiLang = settings.uiLang;
+      localizeTree(document.body);
+    }
+    autoResize(sec1Editor);
+    autoResize(sec2Editor);
+  }
+
+  settingsMenu.querySelectorAll('.seg').forEach(seg => {
+    seg.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (b) setSetting(seg.dataset.setting, b.dataset.value);
+    });
   });
+  if (darkQuery) darkQuery.addEventListener('change', () => { if (settings.theme === 'system') applySettings(); });
+
+  /* ---------- Interface language ----------
+     Interface strings are written "संस्कृतम् (English)". uiText shows the Sanskrit half, the
+     English half, or both, as chosen in the settings. Text is rewritten as it appears, including
+     messages built later; the book's own text, notes and the export preview are left alone. */
+  let uiLang = 'both';
+  const UI_EN = {
+    '‹ पूर्वम्': '‹ Previous',
+    'परम् ›': 'Next ›',
+    'पदच्छेदः': 'Padaccheda',
+    'टिप्पणी': 'Notes',
+    'सम्पूर्णः ग्रन्थः': 'Complete text'
+  };
+  // A Devanagari phrase (optionally after a Latin prefix such as "AI-") followed by "(English)".
+  // The English must contain a lower-case letter, so "(PDF 015)" is never treated as a translation.
+  const UI_PAIR = /((?:[A-Za-z]+-)?[\u0900-\u0965\u0970-\u097F][\u0900-\u097FA-Za-z\s,;।—–:?!·'’\-\/+]*?)\s*\(([^()]*[a-z][^()]*)\)/g;
+  const UI_SKIP = 'textarea, script, style, .flag-backdrop, #sec3Content, .book-preview-sheet, .flag-words, .flag-note, ' +
+    '.mark-dialog-word, .change-text, .proof-full, .no-i18n';
+  const UI_ATTRS = ['title', 'placeholder', 'aria-label'];
+  const uiOriginals = new WeakMap();   // node → {orig, shown} for text; element → {attr: {orig, shown}}
+
+  function uiText(s) {
+    if (uiLang === 'both' || !s) return s;
+    if (uiLang === 'en') {
+      const m = s.match(/^(\s*)(.*?)(\s*)$/s);
+      if (UI_EN[m[2]]) return m[1] + UI_EN[m[2]] + m[3];
+    }
+    return s.replace(UI_PAIR, (_, sa, en) => uiLang === 'en' ? en.trim() : sa.trim());
+  }
+
+  function localizeText(node) {
+    const el = node.parentElement;
+    if (!el || el.closest(UI_SKIP)) return;
+    const cur = node.nodeValue;
+    const rec = uiOriginals.get(node);
+    const orig = rec && rec.shown === cur ? rec.orig : cur;
+    const shown = uiText(orig);
+    uiOriginals.set(node, { orig, shown });
+    if (shown !== cur) node.nodeValue = shown;
+  }
+
+  function localizeAttr(el, attr) {
+    if (!el.hasAttribute(attr) || el.closest(UI_SKIP)) return;
+    const cur = el.getAttribute(attr);
+    const recs = uiOriginals.get(el) || {};
+    const rec = recs[attr];
+    const orig = rec && rec.shown === cur ? rec.orig : cur;
+    const shown = uiText(orig);
+    recs[attr] = { orig, shown };
+    uiOriginals.set(el, recs);
+    if (shown !== cur) el.setAttribute(attr, shown);
+  }
+
+  function localizeTree(root) {
+    if (root.nodeType === Node.TEXT_NODE) { localizeText(root); return; }
+    if (root.nodeType !== Node.ELEMENT_NODE) return;
+    UI_ATTRS.forEach(a => localizeAttr(root, a));
+    root.querySelectorAll('[title], [placeholder], [aria-label]').forEach(el => UI_ATTRS.forEach(a => localizeAttr(el, a)));
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) localizeText(n);
+  }
+
+  new MutationObserver(records => {
+    if (uiLang === 'both') return;
+    records.forEach(r => {
+      if (r.type === 'childList') r.addedNodes.forEach(localizeTree);
+      else if (r.type === 'characterData') localizeText(r.target);
+      else if (r.type === 'attributes') localizeAttr(r.target, r.attributeName);
+    });
+  }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: UI_ATTRS });
+
+  const nativeAlert = window.alert.bind(window);
+  window.alert = msg => nativeAlert(uiText(String(msg)));
 
   function ensureBaseline(item) {
     if (item.baseline !== undefined) return;
@@ -1790,8 +2415,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   function switchPage(idx) {
     currentIndex = parseInt(idx, 10);
-    select.value = currentIndex;
     const item = data[currentIndex];
+    if (settings.lastPage !== item.page) setLastPage(item.page);
 
     ensureBaseline(item);
     if (reviewCursor && reviewCursor.idx !== currentIndex) reviewCursor = null;
@@ -1824,6 +2449,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     handleEdit();
   }
 
+  function setLastPage(page) {
+    settings.lastPage = page;
+    storeSettings();
+  }
+
   function prevPage() {
     if (currentIndex > 0) switchPage(currentIndex - 1);
   }
@@ -1853,9 +2483,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     if (isNaN(num)) num = 22;
     num = Math.max(14, Math.min(48, num));
     fontSizeInput.value = num;
-    document.documentElement.style.setProperty('--font-size', num + 'px');
-    autoResize(sec1Editor);
-    autoResize(sec2Editor);
+    setSetting('fontSize', num);
   }
 
   function stepFontSize(delta) {
@@ -1864,9 +2492,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   function changeFont(fontFamily) {
-    document.documentElement.style.setProperty('--font-family', fontFamily);
-    autoResize(sec1Editor);
-    autoResize(sec2Editor);
+    setSetting('font', fontFamily);
   }
 
   function toggleSection(elementId, btnId) {
@@ -1877,11 +2503,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     if (isVisible) {
       el.classList.remove('visible');
       btn.classList.remove('active');
-      btn.innerText = btn.innerText.replace('−', '+');
+      btn.querySelector('.sign').textContent = '+';
     } else {
       el.classList.add('visible');
       btn.classList.add('active');
-      btn.innerText = btn.innerText.replace('+', '−');
+      btn.querySelector('.sign').textContent = '−';
       if (elementId === 'sec2Box') autoResize(sec2Editor);
     }
   }
@@ -3349,6 +3975,11 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
       closeAllPagesModal();
       return;
     }
+    if (e.altKey && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) {
+      e.preventDefault();
+      togglePagePanel(true);
+      return;
+    }
     if (e.key === 'Escape' && !settingsMenu.hidden) {
       toggleSettings(false);
       settingsBtn.focus();
@@ -3416,7 +4047,11 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
   sec1Editor.addEventListener('focus', () => { lastEditorSec = 'sec1'; });
   sec2Editor.addEventListener('focus', () => { lastEditorSec = 'sec2'; });
 
-  if (data.length > 0) switchPage(0);
+  applySettings();
+  if (data.length > 0) {
+    const last = settings.rememberPage ? data.findIndex(d => d.page === settings.lastPage) : -1;
+    switchPage(last !== -1 ? last : 0);
+  }
 </script>
 </body>
 </html>"""
@@ -3484,6 +4119,8 @@ def generate_viewer(standalone=False, verified_dir=VERIFIED_DIR, review_flags_js
     json_data = json.dumps(pages_data, ensure_ascii=False)
     final_html = HTML_TEMPLATE.replace("<!-- JSON_DATA_PLACEHOLDER -->", json_data)
     final_html = final_html.replace("<!-- APPS_SCRIPT_URL_PLACEHOLDER -->", APPS_SCRIPT_URL)
+    parvas = [{"name": name, "from": lo, "to": hi} for lo, hi, name in PARVAS]
+    final_html = final_html.replace("<!-- PARVAS_PLACEHOLDER -->", json.dumps(parvas, ensure_ascii=False))
 
     output_html = STANDALONE_HTML if standalone else SITE_HTML
     os.makedirs(os.path.dirname(output_html) or ".", exist_ok=True)
