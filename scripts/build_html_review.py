@@ -2882,18 +2882,23 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   // Where a saved misprint's printed reading is in मूलपाठः, found by its logged context
   function locateSavedMisprint(item, e) {
+    const m = (e.context || '').match(/^…(.*?) \[.*\] (.*?)…$/);
+    return locateReading(item.sec1, e.before, m && m[1], m && m[2]);
+  }
+
+  // Where a reading is in a text, found by the words logged before and after it
+  function locateReading(text, reading, ctxBefore, ctxAfter) {
     const words = t => (t || '').trim().split(/\s+/).filter(Boolean)
       .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
-    const core = words(e.before);
+    const core = words(reading);
     if (!core) return null;
-    const m = (e.context || '').match(/^…(.*?) \[.*\] (.*?)…$/);
-    const ctxB = words(m && m[1]), ctxA = words(m && m[2]);
+    const ctxB = words(ctxBefore), ctxA = words(ctxAfter);
     for (const [b, a] of [[ctxB, ctxA], ['', ctxA], [ctxB, '']]) {
       if (!b && !a) continue;
-      const hit = new RegExp(`${b ? `(?:${b})\\s*` : ''}(${core})${a ? `\\s*(?:${a})` : ''}`, 'd').exec(item.sec1);
+      const hit = new RegExp(`${b ? `(?:${b})\\s*` : ''}(${core})${a ? `\\s*(?:${a})` : ''}`, 'd').exec(text);
       if (hit) return { start: hit.indices[1][0], end: hit.indices[1][1] };
     }
-    const all = flagRanges(item.sec1, e.before.trim());
+    const all = flagRanges(text, reading.trim());
     return all.length === 1 ? { start: all[0][0], end: all[0][1] } : null;
   }
 
@@ -3039,7 +3044,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     savedMisprints(item, pc).forEach(e => {
         const m = (e.context || '').match(/^…(.*?) \[.*\] (.*?)…$/);
         entries.push({ section: 'sec1', category: 'misprint', before: e.before, after: e.after,
-          context_before: m ? m[1] : '', context_after: m ? m[2] : '', source: e.source, note: e.note, pada: e.pada || '' });
+          context_before: m ? m[1] : '', context_after: m ? m[2] : '', source: e.source, note: e.note, pada: e.pada || '',
+          printedInText: true });
       });
     return entries.map((e, i) => ({ n: i + 1, ...e }));
   }
@@ -3355,9 +3361,22 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   function buildCompiledBookData() {
-    const compiled = compileBookBody();
+    if (data[currentIndex]) {
+      data[currentIndex].sec1 = sec1Editor.value;
+      data[currentIndex].sec2 = sec2Editor.value;
+    }
     const opts = getModalOptions();
     const entries = correctionEntries(opts);
+    // Misprints are emended in the exported text and marked †n, n being the appendix row
+    exportMisprints = new Map();
+    if (opts.corrections) {
+      entries.filter(e => e.category === 'misprint').forEach((e, i) => {
+        const list = exportMisprints.get(e.item) || [];
+        list.push({ ...e, n: i + 1 });
+        exportMisprints.set(e.item, list);
+      });
+    }
+    const compiled = compileBookBody();
     document.getElementById('corrCount').innerText = `(${toDevanagariDigits(entries.length)})`;
     if (!opts.corrections || !entries.length || !compiled.toc.length) return compiled;
     const appendix = correctionsAppendix(entries, opts);
@@ -3368,6 +3387,34 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     };
   }
 
+  let exportMisprints = new Map();
+  const MISPRINT_SENTINEL = /\uE003(\d+)\uE004([\s\S]*?)\uE005/g;
+
+  // The page's source text with each misprint replaced by its corrected reading, wrapped in a
+  // sentinel that becomes the †n marker. The saved page keeps the printed reading; only the
+  // export is emended.
+  function emendMisprintsForExport(item) {
+    const list = exportMisprints.get(item);
+    if (!list) return item;
+    let text = item.sec1;
+    list.forEach(e => {
+      const reading = e.printedInText ? e.before : e.after;
+      const r = locateReading(text, reading, e.context_before, e.context_after);
+      if (!r) return;
+      text = text.slice(0, r.start) + `\uE003${e.n}\uE004${e.after.trim()}\uE005` + text.slice(r.end);
+    });
+    return { ...item, sec1: text };
+  }
+
+  function misprintMarksHtml(html) {
+    return html.replace(MISPRINT_SENTINEL, (_, n, word) =>
+      `${word}<sup class="corr-ref" style="color: #9a3412; font-size: 0.6em;"><a href="#corr-mp-${n}" style="color: inherit; text-decoration: none;">†${toDevanagariDigits(n)}</a></sup>`);
+  }
+
+  function misprintMarksPlain(text) {
+    return text.replace(MISPRINT_SENTINEL, (_, n, word) => `${word}[†${n}]`);
+  }
+
   /* ---------- Corrections appendix ----------
      Every change the reviewer made, from the same log that is saved with each page. Misprints
      in the book are always listed (they are the edition's emendations); OCR misreadings and
@@ -3375,7 +3422,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   const CORRECTIONS_TITLE = 'परिशिष्टम् — संशोधनसूची (Appendix: List of Corrections)';
   const CORRECTION_SECTIONS = [
     { category: 'misprint', title: '⚠️ मुद्रणदोषाः (Misprints in the Book)',
-      intro: 'मुद्रितः पाठः मूलपाठे यथावत् रक्षितः; शुद्धः पाठः अत्र दीयते (The printed reading is kept in the text; the correct reading is given here).',
+      intro: 'मूलपाठे शुद्धः पाठः दत्तः, † इति चिह्नितः; ग्रन्थे मुद्रितः पाठः अत्र दीयते (The text gives the corrected reading, marked †n; the reading printed in the book is given here).',
       before: 'मुद्रितः पाठः (Printed)', after: 'शुद्धः पाठः (Correct)' },
     { category: 'ocr', title: '🔍 OCR-दोषाः (OCR Misreadings Corrected)',
       intro: 'यन्त्रेण अशुद्धं पठितम्, संशोधकेन स्कैन्-अनुसारं शोधितम् (Words the OCR misread, corrected against the scan).',
@@ -3421,14 +3468,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         `<th>${s.before}</th><th>${s.after}</th><th>सन्दर्भः (Context)</th><th>टिप्पणी (Note)</th></tr></thead><tbody>`);
       rows.forEach((e, i) => {
         const where = `${pageLabel(e.item)} (PDF ${e.item.page})${e.section === 'sec2' ? ' · पदच्छेदः' : ''}`;
-        // The context shows the reading as it now stands in the text: printed for a misprint,
-        // corrected otherwise. The reading columns already give the change itself.
-        const inText = e.category === 'misprint' ? e.before : e.after;
+        // The context shows the reading as it stands in the exported text (misprints are emended
+        // there). The reading columns already give the change itself.
+        const inText = e.after;
+        const num = e.category === 'misprint'
+          ? `<a name="corr-mp-${i + 1}"></a>†${toDevanagariDigits(i + 1)}` : toDevanagariDigits(i + 1);
         const context = `…${escapeHtml(e.context_before)} <b>${shown(inText)}</b> ${escapeHtml(e.context_after)}…`;
         const note = e.note || '';
-        html.push(`<tr><td>${toDevanagariDigits(i + 1)}</td><td>${escapeHtml(where)}</td><td>${shown(e.before)}</td>` +
+        html.push(`<tr><td${e.category === 'misprint' ? ` id="corr-mp-${i + 1}"` : ''}>${num}</td><td>${escapeHtml(where)}</td><td>${shown(e.before)}</td>` +
           `<td>${shown(e.after)}</td><td>${context}</td><td>${escapeHtml(note)}</td></tr>`);
-        plain.push(`${i + 1}. ${where}: ${e.before || '∅'} → ${e.after || '∅'}  (…${e.context_before} [${inText || '∅'}] ${e.context_after}…)${note ? '  — ' + note : ''}`);
+        plain.push(`${e.category === 'misprint' ? '†' : ''}${i + 1}. ${where}: ${e.before || '∅'} → ${e.after || '∅'}  (…${e.context_before} [${inText || '∅'}] ${e.context_after}…)${note ? '  — ' + note : ''}`);
       });
       html.push('</tbody></table>');
     });
@@ -3582,8 +3631,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const continuous = opts.mergeHyphens && !opts.showPageNums;
     const plainBlocks = [], htmlBlocks = [];
     const review = [];
+    pages = pages.map(emendMisprintsForExport);
     if (opts.reviewFlags) pages = pages.map(item => markFlagsForExport(item, opts, review));
-    const fmt = p => reviewMarksHtml(typesetHtml(p));
+    const fmt = p => misprintMarksHtml(reviewMarksHtml(typesetHtml(p)));
     const english = pages.length && pages[0].lang === 'en';
 
     const renderPairs = pairs => {
@@ -3605,7 +3655,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 : english && p.includes('\n') ? 'text-align: left; '
                 : (ci === 0 || multi ? 'text-indent: 1.5em; ' : '');
               html.push(`<p class="src-para" style="${layout}${opts.sec2 ? SRC_PARA_STYLE : ''}">${fmt(p)}</p>`);
-              plain.push(reviewMarksPlain(p));
+              plain.push(misprintMarksPlain(reviewMarksPlain(p)));
             });
           }
           // Skip the padaccheda where it repeats the source verbatim (e.g. श्रीः)
@@ -3614,7 +3664,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               const centred = isCentred(p);
               const style = centred ? PADA_CENTRED_STYLE : PADA_PARA_STYLE;
               html.push(opts.sec1 ? `<p class="pada-para" style="${style}">${fmt(p)}</p>` : `<p style="${centred ? 'text-align: center;' : ''}">${fmt(p)}</p>`);
-              const pp = reviewMarksPlain(p);
+              const pp = misprintMarksPlain(reviewMarksPlain(p));
               plain.push(opts.sec1 ? pp.split('\n').map(line => '    ' + line).join('\n') : pp);
             });
           }
@@ -3912,6 +3962,7 @@ ${bodyHtml}
         extra = `<w:rFonts w:ascii="${DOCX_LATIN_FONT}" w:hAnsi="${DOCX_LATIN_FONT}"/><w:color w:val="57534E"/><w:sz w:val="19"/><w:szCs w:val="19"/>`;
       }
       else if (child.classList.contains('review-num')) extra = '<w:color w:val="991B1B"/>';
+      else if (child.classList.contains('corr-ref')) extra = '<w:color w:val="9A3412"/><w:vertAlign w:val="superscript"/>';
       else if (child.classList.contains('key-gloss')) {
         extra = `<w:rFonts w:ascii="${DOCX_LATIN_FONT}" w:hAnsi="${DOCX_LATIN_FONT}"/><w:color w:val="57534E"/><w:sz w:val="20"/><w:szCs w:val="20"/>`;
       }
@@ -3946,7 +3997,7 @@ ${bodyHtml}
       const isHeader = tr.parentElement && tr.parentElement.tagName.toLowerCase() === 'thead';
       const cells = [...tr.children].map((td, ci) => {
         const shade = isHeader ? '<w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/>' : '';
-        return `<w:tc><w:tcPr><w:tcW w:w="${widths[ci] || widths[0]}" w:type="dxa"/>${shade}</w:tcPr>${docxParagraph('TableText', docxRuns(td, isHeader ? '<w:b/><w:bCs/>' : ''))}</w:tc>`;
+        return `<w:tc><w:tcPr><w:tcW w:w="${widths[ci] || widths[0]}" w:type="dxa"/>${shade}</w:tcPr>${docxParagraph('TableText', docxRuns(td, isHeader ? '<w:b/><w:bCs/>' : ''), { bookmark: td.id || '' })}</w:tc>`;
       }).join('');
       return `<w:tr>${isHeader ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${cells}</w:tr>`;
     }).join('');
