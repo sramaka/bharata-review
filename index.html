@@ -3166,8 +3166,11 @@
     return entries;
   }
 
+  // No., page, the two readings, context, note
+  const CORRECTION_COLGROUP = '<colgroup>' + [9, 15, 14, 14, 21, 27].map(w => `<col style="width: ${w}%">`).join('') + '</colgroup>';
+
   function correctionsAppendix(entries, opts) {
-    const html = [`<h1 class="book-part-heading" id="bk-corrections"><a name="bk-corrections"></a>${CORRECTIONS_TITLE}</h1>`];
+    const html = [`<h1 class="book-part-heading appendix" id="bk-corrections"><a name="bk-corrections"></a>${CORRECTIONS_TITLE}</h1>`];
     const plain = [CORRECTIONS_TITLE];
     const shown = w => w ? escapeHtml(w) : '∅';
     CORRECTION_SECTIONS.forEach(s => {
@@ -3179,15 +3182,18 @@
         html.push(`<p class="corr-intro">${escapeHtml(s.intro)}</p>`);
         plain.push(s.intro);
       }
-      html.push(`<table class="scholarly-table corr-table"><thead><tr><th>क्रमः (No.)</th><th>स्थानम् (Page)</th>` +
+      html.push(`<table class="scholarly-table corr-table">${CORRECTION_COLGROUP}<thead><tr><th>क्रमः (No.)</th><th>स्थानम् (Page)</th>` +
         `<th>${s.before}</th><th>${s.after}</th><th>सन्दर्भः (Context)</th><th>टिप्पणी (Note)</th></tr></thead><tbody>`);
       rows.forEach((e, i) => {
         const where = `${pageLabel(e.item)} (PDF ${e.item.page})${e.section === 'sec2' ? ' · पदच्छेदः' : ''}`;
-        const context = `…${escapeHtml(e.context_before)} [${shown(e.before)} → ${shown(e.after)}] ${escapeHtml(e.context_after)}…`;
-        const note = [e.note, e.source === 'ai' ? 'AI-सूचना स्वीकृता (AI suggestion accepted)' : ''].filter(Boolean).join('; ');
+        // The context shows the reading as it now stands in the text: printed for a misprint,
+        // corrected otherwise. The reading columns already give the change itself.
+        const inText = e.category === 'misprint' ? e.before : e.after;
+        const context = `…${escapeHtml(e.context_before)} <b>${shown(inText)}</b> ${escapeHtml(e.context_after)}…`;
+        const note = e.note || '';
         html.push(`<tr><td>${toDevanagariDigits(i + 1)}</td><td>${escapeHtml(where)}</td><td>${shown(e.before)}</td>` +
           `<td>${shown(e.after)}</td><td>${context}</td><td>${escapeHtml(note)}</td></tr>`);
-        plain.push(`${i + 1}. ${where}: ${e.before || '∅'} → ${e.after || '∅'}  (…${e.context_before} [${e.before || '∅'} → ${e.after || '∅'}] ${e.context_after}…)${note ? '  — ' + note : ''}`);
+        plain.push(`${i + 1}. ${where}: ${e.before || '∅'} → ${e.after || '∅'}  (…${e.context_before} [${inText || '∅'}] ${e.context_after}…)${note ? '  — ' + note : ''}`);
       });
       html.push('</tbody></table>');
     });
@@ -3246,7 +3252,7 @@
     if (!nums.length) return '';
     const first = nums[0], last = nums[nums.length - 1];
     const range = first === last ? first : `${first}–${last}`;
-    return group[0].lang === 'en' ? range : `पृ. ${range}`;
+    return group[0].lang === 'en' ? `pp. ${range}` : `पृ. ${range}`;
   }
 
   // Linked table of contents (works as hyperlinks in Word and as internal links in the PDF)
@@ -3535,6 +3541,14 @@
     padding-top: 30%;
     page-break-before: always;
   }
+  h1.book-part-heading.appendix {
+    font-size: 24pt;
+    padding-top: 0;
+    margin: 0 0 18pt 0;
+    padding-bottom: 6pt;
+    border-bottom: 1px solid #fed7aa;
+    page-break-after: avoid;
+  }
   h2.book-section-heading {
     font-size: 24pt;
     color: #7c2d12;
@@ -3569,6 +3583,11 @@
   .book-notes-page { font-size: 11pt; color: #9a3412; margin: 10pt 0 2pt 0; page-break-after: avoid; }
   h3.review-heading { color: #991b1b; }
   p.corr-intro { font-size: 12pt; line-height: 1.6; text-align: left; color: #57534e; }
+  p.corr-intro { break-after: avoid; page-break-after: avoid; }
+  table.corr-table { table-layout: fixed; }
+  table.corr-table th, table.corr-table td { padding: 5pt 5pt; }
+  table.corr-table td { overflow-wrap: anywhere; }
+  h1.book-part-heading.appendix + h3.book-notes-heading { border-top: none; margin-top: 0; padding-top: 0; }
   p.review-item { font-size: 12.5pt; line-height: 1.6; text-align: left; margin: 0 0 8pt 0; page-break-inside: avoid; }
   .review-num { color: #991b1b; }
   .review-where, .review-note { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 10pt; color: #57534e; }
@@ -3682,19 +3701,23 @@ ${bodyHtml}
   function docxTable(table) {
     const rows = [...table.querySelectorAll('tr')];
     const cols = Math.max(1, ...rows.map(r => r.children.length));
-    const colW = Math.floor(DOCX_TEXT_WIDTH / cols);
+    // Column widths from a <colgroup> of percentages when there is one, else equal
+    const pct = [...table.querySelectorAll('col')].map(c => parseFloat(c.style.width));
+    const widths = pct.length === cols && pct.every(w => w > 0)
+      ? pct.map(w => Math.floor(DOCX_TEXT_WIDTH * w / 100))
+      : Array(cols).fill(Math.floor(DOCX_TEXT_WIDTH / cols));
     const border = side => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="94A3B8"/>`;
     const xmlRows = rows.map(tr => {
       const isHeader = tr.parentElement && tr.parentElement.tagName.toLowerCase() === 'thead';
-      const cells = [...tr.children].map(td => {
+      const cells = [...tr.children].map((td, ci) => {
         const shade = isHeader ? '<w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/>' : '';
-        return `<w:tc><w:tcPr><w:tcW w:w="${colW}" w:type="dxa"/>${shade}</w:tcPr>${docxParagraph('TableText', docxRuns(td, isHeader ? '<w:b/><w:bCs/>' : ''))}</w:tc>`;
+        return `<w:tc><w:tcPr><w:tcW w:w="${widths[ci] || widths[0]}" w:type="dxa"/>${shade}</w:tcPr>${docxParagraph('TableText', docxRuns(td, isHeader ? '<w:b/><w:bCs/>' : ''))}</w:tc>`;
       }).join('');
       return `<w:tr>${isHeader ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${cells}</w:tr>`;
     }).join('');
     return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(border).join('')}</w:tblBorders>` +
       `<w:tblCellMar><w:left w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr>` +
-      `<w:tblGrid>${'<w:gridCol w:w="' + colW + '"/>'.repeat(cols)}</w:tblGrid>${xmlRows}</w:tbl>` +
+      `<w:tblGrid>${widths.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>${xmlRows}</w:tbl>` +
       docxParagraph('TableSpacer', '');
   }
 
@@ -3747,7 +3770,7 @@ ${bodyHtml}
       } else if (tag === 'div') {
         out.push(...docxBlocks(node, cls.contains('book-en') ? { ...ctx, english: true } : ctx));
       } else if (tag === 'h1') {
-        out.push(docxParagraph('Heading1', docxRuns(node), { bookmark: id }));
+        out.push(docxParagraph(cls.contains('appendix') ? 'AppendixHeading' : 'Heading1', docxRuns(node), { bookmark: id }));
       } else if (tag === 'h2') {
         out.push(docxParagraph('Heading2', docxRuns(node), { bookmark: id }));
       } else if (tag === 'h3') {
@@ -3789,6 +3812,7 @@ ${para('Padaccheda', 'Padaccheda', { next: 'SourceText', pPr: '<w:pBdr><w:left w
 ${para('PadacchedaCentred', 'Padaccheda Centred', { basedOn: 'Padaccheda', pPr: '<w:pBdr><w:left w:val="nil"/></w:pBdr><w:ind w:left="0"/><w:jc w:val="center"/>' })}
 ${para('BodyEnglish', 'Body English', { pPr: '<w:spacing w:after="160" w:line="336" w:lineRule="auto"/><w:jc w:val="both"/>', rPr: fonts(DOCX_LATIN_FONT) + size(24) })}
 ${para('Heading1', 'heading 1', { builtIn: true, next: 'SourceText', outline: 0, pPr: '<w:keepNext/><w:pageBreakBefore/><w:spacing w:before="3600" w:after="240"/><w:jc w:val="center"/>', rPr: size(60) + color(deep) })}
+${para('AppendixHeading', 'Appendix Heading', { next: 'SourceText', outline: 0, pPr: '<w:keepNext/><w:pageBreakBefore/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="6" w:color="FED7AA"/></w:pBdr><w:spacing w:before="0" w:after="360"/><w:jc w:val="center"/>', rPr: size(48) + color(deep) })}
 ${para('Heading2', 'heading 2', { builtIn: true, next: 'SourceText', outline: 1, pPr: '<w:keepNext/><w:pageBreakBefore/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="6" w:color="FED7AA"/></w:pBdr><w:spacing w:before="0" w:after="360"/><w:jc w:val="center"/>', rPr: size(48) + color(deep) })}
 ${para('Heading3', 'heading 3', { builtIn: true, next: 'SourceText', outline: 2, pPr: '<w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="2" w:color="FED7AA"/></w:pBdr><w:spacing w:before="360" w:after="120"/>', rPr: size(24) + color(rust) })}
 ${para('NotesHeading', 'Notes Heading', { next: 'NotesPageLabel', outline: 2, pPr: '<w:keepNext/><w:pBdr><w:top w:val="single" w:sz="4" w:space="8" w:color="E7E5E4"/></w:pBdr><w:spacing w:before="560" w:after="120"/>', rPr: size(30) + color(deep) })}
