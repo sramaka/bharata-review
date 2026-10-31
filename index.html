@@ -1032,7 +1032,7 @@
     margin: 14px 0 8px 0;
   }
   .book-en { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; line-height: 1.6; }
-  .book-en p { text-align: left; }
+  .book-en p { text-align: justify; hyphens: auto; }
   .book-preview-sheet .pada-para { text-align: left; }
   .reading-key {
     border: 1px solid #e7e5e4;
@@ -3343,18 +3343,26 @@
     const review = [];
     if (opts.reviewFlags) pages = pages.map(item => markFlagsForExport(item, opts, review));
     const fmt = p => reviewMarksHtml(typesetHtml(p));
+    const english = pages.length && pages[0].lang === 'en';
 
     const renderPairs = pairs => {
       pairs.forEach(([s, d]) => {
         const html = [], plain = [];
         const chunks = (opts.sec1 && opts.sec2) ? chunkParagraphPair(s, d) : [[s, d]];
         // Verses and short lines (invocations, headings) are centred as in the printed book;
-        // prose paragraphs get a first-line indent
-        const centred = isVerseOrShort(s);
+        // prose paragraphs get a first-line indent. A pair holding several paragraphs (a page
+        // whose padaccheda does not pair up, or English front matter) is laid out per paragraph.
+        const multi = splitParagraphs(s).length > 1;
+        const pairCentred = isVerseOrShort(s);
+        const isCentred = p => !multi ? pairCentred : (english ? !p.includes('\n') && p.length < 40 : isVerseOrShort(p));
         chunks.forEach(([cs, cd], ci) => {
           if (opts.sec1) {
             splitParagraphs(cs).forEach(p => {
-              const layout = centred ? 'text-align: center; ' : (ci === 0 ? 'text-indent: 1.5em; ' : '');
+              const centred = isCentred(p);
+              // English: multi-line blocks (place, date and signature) are set flush left
+              const layout = centred ? 'text-align: center; '
+                : english && p.includes('\n') ? 'text-align: left; '
+                : (ci === 0 || multi ? 'text-indent: 1.5em; ' : '');
               html.push(`<p class="src-para" style="${layout}${opts.sec2 ? SRC_PARA_STYLE : ''}">${fmt(p)}</p>`);
               plain.push(reviewMarksPlain(p));
             });
@@ -3362,6 +3370,7 @@
           // Skip the padaccheda where it repeats the source verbatim (e.g. श्रीः)
           if (opts.sec2 && !(opts.sec1 && normalizeSpace(cd) === normalizeSpace(cs))) {
             splitParagraphs(cd).forEach(p => {
+              const centred = isCentred(p);
               const style = centred ? PADA_CENTRED_STYLE : PADA_PARA_STYLE;
               html.push(opts.sec1 ? `<p class="pada-para" style="${style}">${fmt(p)}</p>` : `<p style="${centred ? 'text-align: center;' : ''}">${fmt(p)}</p>`);
               const pp = reviewMarksPlain(p);
@@ -3577,7 +3586,7 @@
   }
   th { background: #f1f5f9; font-weight: bold; }
   .book-en { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; line-height: 1.6; }
-  .book-en p { text-align: left; }
+  .book-en p { text-align: justify; hyphens: auto; }
 </style>
 </head>
 <body>
@@ -3717,6 +3726,7 @@ ${bodyHtml}
       const cls = node.classList;
       const style = node.getAttribute('style') || '';
       const centred = /text-align:\s*center/.test(style);
+      const jc = centred ? 'center' : /text-align:\s*left/.test(style) ? 'left' : '';
       const id = node.getAttribute('id') || '';
 
       if (cls.contains('title-page')) {
@@ -3749,9 +3759,9 @@ ${bodyHtml}
           out.push(docxParagraph(centred ? 'PadacchedaCentred' : 'Padaccheda', docxRuns(node)));
         } else if (cls.contains('src-para')) {
           out.push(docxParagraph(ctx.english ? 'BodyEnglish' : 'SourceText', docxRuns(node),
-            { jc: centred ? 'center' : '', firstLine: !centred && /text-indent/.test(style) }));
+            { jc, firstLine: !centred && /text-indent/.test(style) }));
         } else {
-          out.push(docxParagraph(ctx.english ? 'BodyEnglish' : 'SourceText', docxRuns(node), { jc: centred ? 'center' : '' }));
+          out.push(docxParagraph(ctx.english ? 'BodyEnglish' : 'SourceText', docxRuns(node), { jc }));
         }
       }
     });
@@ -3777,7 +3787,7 @@ ${bodyHtml}
 ${para('SourceText', 'Source Text', { pPr: '<w:spacing w:after="80"/><w:jc w:val="both"/>' })}
 ${para('Padaccheda', 'Padaccheda', { next: 'SourceText', pPr: '<w:pBdr><w:left w:val="single" w:sz="12" w:space="8" w:color="C7D2FE"/></w:pBdr><w:spacing w:after="240" w:line="360" w:lineRule="auto"/><w:ind w:left="567"/><w:jc w:val="left"/>', rPr: size(26) + color('3B4A6B') })}
 ${para('PadacchedaCentred', 'Padaccheda Centred', { basedOn: 'Padaccheda', pPr: '<w:pBdr><w:left w:val="nil"/></w:pBdr><w:ind w:left="0"/><w:jc w:val="center"/>' })}
-${para('BodyEnglish', 'Body English', { pPr: '<w:spacing w:after="160" w:line="336" w:lineRule="auto"/><w:jc w:val="left"/>', rPr: fonts(DOCX_LATIN_FONT) + size(24) })}
+${para('BodyEnglish', 'Body English', { pPr: '<w:spacing w:after="160" w:line="336" w:lineRule="auto"/><w:jc w:val="both"/>', rPr: fonts(DOCX_LATIN_FONT) + size(24) })}
 ${para('Heading1', 'heading 1', { builtIn: true, next: 'SourceText', outline: 0, pPr: '<w:keepNext/><w:pageBreakBefore/><w:spacing w:before="3600" w:after="240"/><w:jc w:val="center"/>', rPr: size(60) + color(deep) })}
 ${para('Heading2', 'heading 2', { builtIn: true, next: 'SourceText', outline: 1, pPr: '<w:keepNext/><w:pageBreakBefore/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="6" w:color="FED7AA"/></w:pBdr><w:spacing w:before="0" w:after="360"/><w:jc w:val="center"/>', rPr: size(48) + color(deep) })}
 ${para('Heading3', 'heading 3', { builtIn: true, next: 'SourceText', outline: 2, pPr: '<w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="2" w:color="FED7AA"/></w:pBdr><w:spacing w:before="360" w:after="120"/>', rPr: size(24) + color(rust) })}
