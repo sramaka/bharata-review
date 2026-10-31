@@ -1057,6 +1057,10 @@
     margin: 12px 0 4px 0;
   }
   .review-heading { color: #991b1b; }
+  .opt-count { font-weight: 400; color: #64748b; }
+  .book-preview-sheet p.corr-intro { font-size: 0.75em; line-height: 1.6; text-align: left; color: #57534e; }
+  .corr-table { font-size: 0.75em; width: 100%; table-layout: fixed; }
+  .corr-table td, .corr-table th { overflow-wrap: anywhere; }
   .book-preview-sheet p.review-item { font-size: 0.8em; line-height: 1.6; text-align: left; margin: 0 0 0.7em 0; }
   .review-num { color: #991b1b; }
   .review-where, .review-note { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 0.8em; color: #57534e; }
@@ -1423,6 +1427,14 @@
         <label title="समीक्षणीयानि पदानि चिह्नयतु (Mark the words flagged for review, with a list at the end of each section)">
           <input type="checkbox" id="optReviewFlags" checked onchange="refreshCompiledView()">
           ⚑ समीक्षणीयानि (Mark Words to Review)
+        </label>
+        <label title="ग्रन्थान्ते संशोधनानां सूची — मुद्रणदोषाः (Appendix listing the corrections made: misprints in the book)">
+          <input type="checkbox" id="optCorrections" checked onchange="syncCorrectionOptions(); refreshCompiledView()">
+          ✎ संशोधनसूची (List of Corrections) <span id="corrCount" class="opt-count"></span>
+        </label>
+        <label title="OCR-दोषाः पदच्छेददोषाः च अपि (Also list OCR misreadings and padaccheda corrections)">
+          <input type="checkbox" id="optAllCorrections" onchange="refreshCompiledView()">
+          + OCR, पदच्छेदः (Include OCR &amp; Padaccheda Fixes)
         </label>
         <label title="पृष्ठसङ्ख्याः दर्शयतु (Show page number headers)">
           <input type="checkbox" id="optShowPageNums" onchange="refreshCompiledView()">
@@ -2861,8 +2873,14 @@
       reviewFlags: document.getElementById('optReviewFlags').checked,
       sec1: document.getElementById('incSec1').checked,
       sec2: document.getElementById('incSec2').checked,
-      sec3: document.getElementById('incSec3').checked
+      sec3: document.getElementById('incSec3').checked,
+      corrections: document.getElementById('optCorrections').checked,
+      allCorrections: document.getElementById('optAllCorrections').checked
     };
+  }
+
+  function syncCorrectionOptions() {
+    document.getElementById('optAllCorrections').disabled = !document.getElementById('optCorrections').checked;
   }
 
   function splitParagraphs(text) {
@@ -2967,6 +2985,81 @@
   }
 
   function buildCompiledBookData() {
+    const compiled = compileBookBody();
+    const opts = getModalOptions();
+    const entries = correctionEntries(opts);
+    document.getElementById('corrCount').innerText = `(${toDevanagariDigits(entries.length)})`;
+    if (!opts.corrections || !entries.length || !compiled.toc.length) return compiled;
+    const appendix = correctionsAppendix(entries, opts);
+    return {
+      plain: `${compiled.plain.trimEnd()}\n\n${appendix.plain}\n`,
+      html: `${compiled.html}\n${appendix.html}`,
+      toc: [...compiled.toc, { id: 'bk-corrections', label: CORRECTIONS_TITLE, range: '', appendix: true }]
+    };
+  }
+
+  /* ---------- Corrections appendix ----------
+     Every change the reviewer made, from the same log that is saved with each page. Misprints
+     in the book are always listed (they are the edition's emendations); OCR misreadings and
+     padaccheda corrections only when asked for. */
+  const CORRECTIONS_TITLE = 'परिशिष्टम् — संशोधनसूची (Appendix: List of Corrections)';
+  const CORRECTION_SECTIONS = [
+    { category: 'misprint', title: '⚠️ मुद्रणदोषाः (Misprints in the Book)',
+      intro: 'मुद्रितः पाठः मूलपाठे यथावत् रक्षितः; शुद्धः पाठः अत्र दीयते (The printed reading is kept in the text; the correct reading is given here).',
+      before: 'मुद्रितः पाठः (Printed)', after: 'शुद्धः पाठः (Correct)' },
+    { category: 'ocr', title: '🔍 OCR-दोषाः (OCR Misreadings Corrected)',
+      intro: 'यन्त्रेण अशुद्धं पठितम्, संशोधकेन स्कैन्-अनुसारं शोधितम् (Words the OCR misread, corrected against the scan).',
+      before: 'OCR-पाठः (OCR read)', after: 'शोधितः (Corrected)' },
+    { category: 'pada', title: '✂️ पदच्छेदसंशोधनानि (Padaccheda Corrections)',
+      intro: 'AI-कृते पदच्छेदे संशोधनानि (Corrections to the AI\'s sandhi and compound splitting).',
+      before: 'AI-पदच्छेदः (AI split)', after: 'शोधितः (Corrected)' },
+    { category: 'other', title: '✏️ अन्यानि संशोधनानि (Other Edits)',
+      intro: '', before: 'पूर्वपाठः (Before)', after: 'शोधितः (After)' }
+  ];
+
+  function correctionEntries(opts) {
+    const entries = [];
+    compiledPages(opts).forEach(item => {
+      ensureBaseline(item);
+      changeLogEntries(pageChanges(item), item).forEach(e => {
+        if (e.category !== 'misprint' && !opts.allCorrections) return;
+        if (e.section === 'sec2' && !opts.sec2) return;   // padaccheda not in this export
+        if ((e.before || '').trim() === (e.after || '').trim()) return;   // spacing only
+        entries.push({ ...e, item });
+      });
+    });
+    return entries;
+  }
+
+  function correctionsAppendix(entries, opts) {
+    const html = [`<h1 class="book-part-heading" id="bk-corrections"><a name="bk-corrections"></a>${CORRECTIONS_TITLE}</h1>`];
+    const plain = [CORRECTIONS_TITLE];
+    const shown = w => w ? escapeHtml(w) : '∅';
+    CORRECTION_SECTIONS.forEach(s => {
+      const rows = entries.filter(e => e.category === s.category);
+      if (!rows.length) return;
+      html.push(`<h3 class="book-notes-heading">${s.title}</h3>`);
+      plain.push('', s.title);
+      if (s.intro) {
+        html.push(`<p class="corr-intro">${escapeHtml(s.intro)}</p>`);
+        plain.push(s.intro);
+      }
+      html.push(`<table class="scholarly-table corr-table"><thead><tr><th>क्रमः (No.)</th><th>स्थानम् (Page)</th>` +
+        `<th>${s.before}</th><th>${s.after}</th><th>सन्दर्भः (Context)</th><th>टिप्पणी (Note)</th></tr></thead><tbody>`);
+      rows.forEach((e, i) => {
+        const where = `${pageLabel(e.item)} (PDF ${e.item.page})${e.section === 'sec2' ? ' · पदच्छेदः' : ''}`;
+        const context = `…${escapeHtml(e.context_before)} [${shown(e.before)} → ${shown(e.after)}] ${escapeHtml(e.context_after)}…`;
+        const note = [e.note, e.source === 'ai' ? 'AI-सूचना स्वीकृता (AI suggestion accepted)' : ''].filter(Boolean).join('; ');
+        html.push(`<tr><td>${toDevanagariDigits(i + 1)}</td><td>${escapeHtml(where)}</td><td>${shown(e.before)}</td>` +
+          `<td>${shown(e.after)}</td><td>${context}</td><td>${escapeHtml(note)}</td></tr>`);
+        plain.push(`${i + 1}. ${where}: ${e.before || '∅'} → ${e.after || '∅'}  (…${e.context_before} [${e.before || '∅'} → ${e.after || '∅'}] ${e.context_after}…)${note ? '  — ' + note : ''}`);
+      });
+      html.push('</tbody></table>');
+    });
+    return { html: html.join('\n'), plain: plain.join('\n') };
+  }
+
+  function compileBookBody() {
     if (data[currentIndex]) {
       data[currentIndex].sec1 = sec1Editor.value;
       data[currentIndex].sec2 = sec2Editor.value;
@@ -3028,6 +3121,10 @@
     const rows = [];
     let lastPart = null;
     toc.forEach(t => {
+      if (t.appendix) {
+        rows.push(`<tr class="toc-part"><td colspan="2"><a href="#${t.id}">${escapeHtml(t.label)}</a></td></tr>`);
+        return;
+      }
       if (hasFront && t.front !== lastPart) {
         const partId = t.front ? 'bk-part-front' : 'bk-part-main';
         rows.push(`<tr class="toc-part"><td colspan="2"><a href="#${partId}">${t.front ? PART_TITLES.front : PART_TITLES.main}</a></td></tr>`);
@@ -3327,6 +3424,7 @@
   }
   .book-notes-page { font-size: 11pt; color: #9a3412; margin: 10pt 0 2pt 0; page-break-after: avoid; }
   h3.review-heading { color: #991b1b; }
+  p.corr-intro { font-size: 12pt; line-height: 1.6; text-align: left; color: #57534e; }
   p.review-item { font-size: 12.5pt; line-height: 1.6; text-align: left; margin: 0 0 8pt 0; page-break-inside: avoid; }
   .review-num { color: #991b1b; }
   .review-where, .review-note { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 10pt; color: #57534e; }
@@ -3510,7 +3608,7 @@ ${bodyHtml}
       } else if (tag === 'h3') {
         out.push(docxParagraph(cls.contains('book-notes-heading') ? 'NotesHeading' : 'Heading3', docxRuns(node), { bookmark: id }));
       } else if (tag === 'p') {
-        if (cls.contains('review-item')) {
+        if (cls.contains('review-item') || cls.contains('corr-intro')) {
           out.push(docxParagraph('ReviewItem', docxRuns(node)));
         } else if (cls.contains('pada-para')) {
           out.push(docxParagraph(centred ? 'PadacchedaCentred' : 'Padaccheda', docxRuns(node)));
