@@ -39,6 +39,7 @@
 | १३ | पृष्ठान्तः (पङ्क्तिः २१) | ईश्वरो हि पुरुषः | ईश्वरः हि पुरुषः | ℹ️ पृष्ठसन्धिः | वाक्यं अग्रिमपृष्ठे (पृष्ठे ०१७) 'परस्य सुखदुःखे...' इत्यादिना अनुवर्तते। |
 | १४ | …पटैः… | सम्यग्बध्वा | सम्यग्बद्ध्वा | ⚠️ मुद्रणदोषः | संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer); The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). Keep the printed form with a मुद्रणदोषः note, or correct it. |
 | १५ | …पटैः… | सम्यग्बध्वा | सम्यग्बद्ध्वा | ⚠️ मुद्रणदोषः | संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer); The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). Keep the printed form with a मुद्रणदोषः note, or correct it. |
+| १६ | …पटैः… | सम्यग्बध्वा | सम्यग्बद्ध्वा | ⚠️ मुद्रणदोषः | संशोधकेन निर्दिष्टः मुद्रणदोषः (misprint reported by reviewer); The scan appears to print बध्वा, but the absolutive of बन्ध् is बद्ध्वा (the padaccheda already has बद्ध्वा). Keep the printed form with a मुद्रणदोषः note, or correct it. |
 
 ## ४. संशोधनलेखः (Correction Log)
 
