@@ -23,6 +23,11 @@ WEB_JPEG_QUALITY = 80
 # Optional single-file offline copy with all scans embedded (--standalone)
 STANDALONE_HTML = "output/proofread_bundle.html"
 
+# Frontispiece for the exported book: the author's portrait (grayscale JPEG, framed edge
+# cropped off; the original is assets/lakshmana_suri_portrait.png) and its caption
+PORTRAIT_JPEG = "assets/lakshmana_suri_portrait.jpg"
+PORTRAIT_CAPTION = ["महामहोपाध्याय-श्रीमल्लक्ष्मणसूरिः", "Mahāmahopādhyāya M. Lakshmana Suri (1859–1928)"]
+
 # Paste your deployed Google Apps Script Web App URL here
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrgtnxcAj0Z7skBCbaAeAEwwEpKUBXN9bzMuUq7LbdZbVOQaeEf30jL9DVUV476Bg/exec"
 
@@ -50,6 +55,30 @@ FRONT_MATTER = {
     12: ("ग्रन्थकर्तुः कृतयः (Works)", "", "en"),
     13: ("विषयसूची (Contents)", "", "sa"),
 }
+
+def jpeg_size(data):
+    """(width, height) from a JPEG's start-of-frame marker."""
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker, length = data[i + 1], int.from_bytes(data[i + 2:i + 4], "big")
+        if marker in (0xC0, 0xC1, 0xC2):
+            return int.from_bytes(data[i + 7:i + 9], "big"), int.from_bytes(data[i + 5:i + 7], "big")
+        i += 2 + length
+    return None
+
+def portrait_data():
+    """The frontispiece as {src, width, height, caption} for the page, or None without the file."""
+    if not os.path.exists(PORTRAIT_JPEG):
+        return None
+    with open(PORTRAIT_JPEG, "rb") as f:
+        data = f.read()
+    size = jpeg_size(data)
+    if not size:
+        return None
+    return {"b64": base64.b64encode(data).decode("ascii"), "width": size[0], "height": size[1], "caption": PORTRAIT_CAPTION}
 
 def page_metadata(pdf_page):
     """Return section label, printed page number and language for a PDF page."""
@@ -1735,6 +1764,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   let currentZoom = 100;
 
   const PARVA_LIST = <!-- PARVAS_PLACEHOLDER -->;
+  const PORTRAIT = <!-- PORTRAIT_PLACEHOLDER -->;
   const pagePicker = document.getElementById('pagePicker');
   const pageBtn = document.getElementById('pageBtn');
   const pageBtnLabel = document.getElementById('pageBtnLabel');
@@ -3575,6 +3605,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>`;
   }
 
+  // The author's portrait on its own page after the title page, when the front matter is included
+  function buildFrontispieceHtml(opts) {
+    if (!PORTRAIT || !opts.frontMatter) return '';
+    return `<div class="frontispiece">
+<img class="fp-image" src="data:image/jpeg;base64,${PORTRAIT.b64}" alt="${escapeHtml(PORTRAIT.caption[1])}">
+<p class="fp-caption">${escapeHtml(PORTRAIT.caption[0])}</p>
+<p class="fp-caption-latin">${escapeHtml(PORTRAIT.caption[1])}</p>
+</div>`;
+  }
+
   /* Review flags in exports: open flags are wrapped in private-use sentinel characters before
      compiling, so they survive page joins and chunking, then become marks with a ⚑n reference */
   const FLAG_SENTINEL = /([a-z]+)(\d+)([\s\S]*?)/g;
@@ -3772,7 +3812,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   function buildExportBodyHtml() {
     const compiled = buildCompiledBookData();
     const opts = getModalOptions();
-    return [buildTitlePageHtml(opts), buildTocHtml(compiled.toc), buildReadingKeyHtml(opts), compiled.html].join('\n');
+    return [buildTitlePageHtml(opts), buildFrontispieceHtml(opts), buildTocHtml(compiled.toc), buildReadingKeyHtml(opts), compiled.html].join('\n');
   }
 
   function buildExportDocumentHtml() {
@@ -3807,6 +3847,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   p { margin: 0 0 14pt 0; text-align: justify; white-space: pre-wrap; }
   .title-page { text-align: center; padding-top: 18%; page-break-after: always; }
   .title-page p { text-align: center; white-space: normal; }
+  .frontispiece { text-align: center; padding-top: 9%; page-break-after: always; }
+  .frontispiece p { text-align: center; white-space: normal; margin: 0; }
+  .fp-image { height: 16cm; width: auto; }
+  .fp-caption { font-size: 15pt; margin-top: 14pt !important; }
+  .fp-caption-latin { font-family: 'Noto Serif', Georgia, 'Tiro Devanagari Sanskrit', serif; font-size: 11pt; color: #555555; }
   .tp-shri { font-size: 16pt; }
   .tp-author { font-size: 17pt; margin-top: 48pt; }
   h1, h2, h3 { font-weight: normal; }
@@ -4045,6 +4090,11 @@ ${bodyHtml}
           if (s) out.push(docxParagraph(map[s], docxRuns(c)));
         });
         out.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+      } else if (cls.contains('frontispiece')) {
+        out.push(docxPortrait());
+        out.push(docxParagraph('FrontCaption', docxRuns(node.querySelector('.fp-caption'))));
+        out.push(docxParagraph('FrontCaptionLatin', docxRuns(node.querySelector('.fp-caption-latin'))));
+        out.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
       } else if (cls.contains('book-toc')) {
         out.push(...docxToc(node));
       } else if (cls.contains('reading-key-title')) {
@@ -4108,6 +4158,8 @@ ${para('TableSpacer', 'Table Spacer', { pPr: '<w:spacing w:after="120"/>', rPr: 
 ${para('Title', 'Title', { builtIn: true, pPr: '<w:spacing w:before="120" w:after="720"/><w:jc w:val="center"/>', rPr: size(80) + color(deep) })}
 ${para('TitleShri', 'Title Shri', { pPr: '<w:spacing w:before="2400" w:after="0"/><w:jc w:val="center"/>', rPr: size(32) })}
 ${para('TitleAuthor', 'Title Author', { pPr: '<w:spacing w:before="960" w:after="0"/><w:jc w:val="center"/>', rPr: size(34) })}
+${para('FrontCaption', 'Frontispiece Caption', { pPr: '<w:spacing w:before="280" w:after="40" w:line="300" w:lineRule="auto"/><w:jc w:val="center"/>', rPr: size(30) })}
+${para('FrontCaptionLatin', 'Frontispiece Caption Latin', { pPr: '<w:spacing w:after="0" w:line="300" w:lineRule="auto"/><w:jc w:val="center"/>', rPr: fonts(DOCX_LATIN_FONT) + size(22) + color('555555') })}
 ${para('TitleLatin', 'Title Latin', { pPr: '<w:spacing w:after="0" w:line="300" w:lineRule="auto"/><w:jc w:val="center"/>', rPr: fonts(DOCX_LATIN_FONT) + size(26) })}
 ${para('TitleMeta', 'Title Meta', { pPr: '<w:spacing w:before="1440" w:after="0" w:line="300" w:lineRule="auto"/><w:jc w:val="center"/>', rPr: fonts(DOCX_LATIN_FONT) + size(21) + color('555555') })}
 ${para('TOCHeading', 'TOC Heading', { builtIn: true, pPr: '<w:spacing w:after="360"/><w:jc w:val="center"/>', rPr: size(44) + color(deep) })}
@@ -4119,14 +4171,29 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
 </w:styles>`;
   }
 
+  // The portrait as an inline picture, 17 cm tall (EMU: 36,000 per mm)
+  function docxPortrait() {
+    const cy = 170 * 36000, cx = Math.round(cy * PORTRAIT.width / PORTRAIT.height);
+    const name = xmlEscape(PORTRAIT.caption[1]);
+    return `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="240" w:after="0"/></w:pPr><w:r><w:drawing>` +
+      `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="1" name="Portrait" descr="${name}"/>` +
+      `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+      `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="1" name="portrait.jpeg"/><pic:cNvPicPr/></pic:nvPicPr>` +
+      `<pic:blipFill><a:blip r:embed="rIdPortrait"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>` +
+      `</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  }
+
   function buildDocx(bodyHtml) {
     docxBookmarkId = 0;
     const font = docxTextFont();
     const doc = new DOMParser().parseFromString(`<body>${bodyHtml}</body>`, 'text/html');
     const blocks = docxBlocks(doc.body, { english: false });
+    const portrait = PORTRAIT && doc.body.querySelector('.frontispiece');
     const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    const WP = 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"';
     const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document ${W}><w:body>${blocks.join('\n')}<w:p/>
+<w:document ${W} ${WP}><w:body>${blocks.join('\n')}<w:p/>
 <w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="11906" w:h="16838"/>
 <w:pgMar w:top="1247" w:right="1247" w:bottom="1247" w:left="1247" w:header="708" w:footer="567" w:gutter="0"/><w:titlePg/></w:sectPr>
 </w:body></w:document>`;
@@ -4139,6 +4206,7 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="jpeg" ContentType="image/jpeg"/>
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
@@ -4155,6 +4223,7 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
 <Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 <Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
 <Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+${portrait ? '<Relationship Id="rIdPortrait" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/portrait.jpeg"/>' : ''}
 </Relationships>`;
     const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -4171,6 +4240,7 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
       ['word/settings.xml', settingsXml],
       ['word/_rels/document.xml.rels', docRels],
       ['word/footer1.xml', footerXml],
+      ...(portrait ? [['word/media/portrait.jpeg', Uint8Array.from(atob(PORTRAIT.b64), c => c.charCodeAt(0))]] : []),
     ]);
   }
 
@@ -4199,7 +4269,7 @@ ${para('KeyTitle', 'Reading Key Title', { pPr: '<w:spacing w:before="480" w:afte
     const chunks = [], central = [];
     let offset = 0;
     entries.forEach(([name, content]) => {
-      const nameBytes = enc.encode(name), data = enc.encode(content), crc = crc32(data);
+      const nameBytes = enc.encode(name), data = typeof content === 'string' ? enc.encode(content) : content, crc = crc32(data);
       const local = new DataView(new ArrayBuffer(30));
       local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true);
       local.setUint16(8, 0, true); local.setUint16(10, dosTime, true); local.setUint16(12, dosDate, true);
@@ -4465,6 +4535,7 @@ def generate_viewer(standalone=False, verified_dir=VERIFIED_DIR, review_flags_js
     final_html = final_html.replace("<!-- APPS_SCRIPT_URL_PLACEHOLDER -->", APPS_SCRIPT_URL)
     parvas = [{"name": name, "from": lo, "to": hi} for lo, hi, name in PARVAS]
     final_html = final_html.replace("<!-- PARVAS_PLACEHOLDER -->", json.dumps(parvas, ensure_ascii=False))
+    final_html = final_html.replace("<!-- PORTRAIT_PLACEHOLDER -->", json.dumps(portrait_data(), ensure_ascii=False))
 
     output_html = STANDALONE_HTML if standalone else SITE_HTML
     os.makedirs(os.path.dirname(output_html) or ".", exist_ok=True)

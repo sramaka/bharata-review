@@ -10,6 +10,7 @@ on:
       - "output/verified/**"
       - "output/raw/**"
       - "output/review_flags.json"
+      - "assets/**"
       - "scripts/build_html_review.py"
   workflow_dispatch:
 

@@ -48,6 +48,7 @@ The portal can also export the reviewed text as a PDF or Word document. The expo
 | `config/agent_rules.md` | Transcription rules for the AI |
 | `scripts/` | Page extraction, portal builder, and correction/feedback tools |
 | `apps_script/Code.gs` | Save backend (Google Apps Script) |
+| `assets/` | The author's portrait, used as the frontispiece of the exported book |
 | `.github/workflows/rebuild-site.yml` | Rebuilds the portal when a page is saved |
 
 The source PDF (`input_pdf/`) and the 300 DPI page images (`page_images/`) are not in the repository.

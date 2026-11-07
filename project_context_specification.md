@@ -143,6 +143,7 @@ The builder pairs each `output/raw/page_XXX.md` with a scan, skipping pages that
   - Exports: **Rich Copy**, **Word (.docx)**, **PDF / Print** (opens a print window, so pop-ups must be allowed), and **Markdown (.md)**.
   - Word and PDF exports are laid out as a book:
     - A title page.
+    - A frontispiece (with the front matter): the author's portrait from `assets/lakshmana_suri_portrait.jpg` on its own page, captioned in Devanagari and Latin (`PORTRAIT_JPEG`, `PORTRAIT_CAPTION` in the builder). The builder embeds the JPEG as base64; the Word export packs it as `word/media/portrait.jpeg`. `assets/lakshmana_suri_portrait.png` is the original; the JPEG is a grayscale copy with the frame cropped off.
     - A linked अनुक्रमणिका (Table of Contents) listing each section with its printed page range (e.g. `आदिपर्व … पृ. १–१८`).
     - When front matter is included, part headings (`प्रस्तावनादि` / `मूलग्रन्थः`) on their own pages.
     - Each section starting on a new page under a heading.
